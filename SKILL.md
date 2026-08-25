@@ -260,12 +260,13 @@ example to pattern-match against, the Codabench equivalent of
 4. **Decide the Docker image** using `references/codabench.md`'s "Docker image"
    section: check the reference solution's real dependency file against the stock-image
    table first -- most benchmarks need nothing custom. Only if a stock image doesn't
-   cover it, build from `assets/codabench/Dockerfile.template` (CPU) or
-   `Dockerfile.gpu.template` (GPU), build and test it locally (safe, no confirmation
-   needed), and get **explicit confirmation before `docker push`** -- publishing an
-   image to a public registry is a publish action, not a default-and-forget step, and
-   that confirmation is per-instance even if the user approved a push earlier in this
-   same conversation.
+   cover it, write one from `assets/codabench/Dockerfile.template` (CPU) or
+   `Dockerfile.gpu.template` (GPU) and save it as `Dockerfile` at the bundle root; the
+   validator's tier 4 then builds and tests it automatically (all local and reversible,
+   no confirmation needed -- see the next section). Get **explicit confirmation before
+   `docker push`** -- publishing an image to a public registry is a publish action, not
+   a default-and-forget step, and that confirmation is per-instance even if the user
+   approved a push earlier in this same conversation. The validator never pushes.
 5. **Generate the bundle** following the directory layout in `references/codabench.md`,
    vendoring any shared metric code into `scoring_program/` (and `ingestion_program/` if
    it needs any) rather than importing from outside the bundle -- both directories get
@@ -294,11 +295,24 @@ run, and this doubles as the fastest way to prove the bundle actually works end 
    python scripts/validate_codabench_bundle.py <bundle_dir> --submission <sample_submission.zip> --task-index 0
    ```
    Read its own docstring for what each of its four tiers checks. Tiers 1-3 need no
-   Docker and should always be run before calling a bundle finished; tier 4 (`--docker`)
-   is best-effort extra fidelity when Docker's available, not a requirement. Fix
-   whatever it flags -- a leaderboard column key that doesn't match `scores.json` is the
-   single most common break, and tier 3 catches it by actually producing `scores.json`
-   and diffing its keys against every configured column, not by guessing.
+   Docker and should always be run before calling a bundle finished. Fix whatever it
+   flags -- a leaderboard column key that doesn't match `scores.json` is the single most
+   common break, and tier 3 catches it by actually producing `scores.json` and diffing
+   its keys against every configured column, not by guessing.
+
+   **If Docker is available on this machine, run tier 4 as well** -- add `--docker`:
+   ```bash
+   python scripts/validate_codabench_bundle.py <bundle_dir> --submission <sample_submission.zip> --docker
+   ```
+   It builds the bundle's `Dockerfile` if it has one (otherwise uses/pulls
+   `competition.yaml`'s `docker_image`), then runs the real ingestion and scoring
+   programs inside the container against Codabench's actual `/app/...` layout. That's
+   the only tier that catches "works on my machine, missing a dependency in the declared
+   image" -- a class of failure tiers 1-3 structurally cannot see, since they run
+   against the host's own Python. Check for Docker rather than assuming: the tier
+   self-skips with the reason when the daemon isn't reachable, so just run it and read
+   the output. Everything it does is local and reversible (build, pull, run, and
+   `--rm-built-image` to clean up an image it built); it never pushes.
 3. **Report the actual scores**, not just "validation passed" -- show the user the
    `scores.json` values the example submission produced, the same way the standalone
    benchmark's scoring step reports real numbers rather than a pass/fail flag. If the

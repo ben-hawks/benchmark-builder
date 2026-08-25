@@ -233,26 +233,39 @@ source is exactly the kind of unreproducible artifact this skill exists to avoid
    `assets/codabench/Dockerfile.gpu.template` (GPU) — both are direct extensions of the
    real `Dockerfile-py312`/`Dockerfile-gpu310` shown above, not written from scratch.
    Add exactly the packages the reference solution's own dependency file lists; don't
-   copy in unrelated packages "just in case."
-2. Build and tag it locally — safe, local, freely reversible, no confirmation needed:
+   copy in unrelated packages "just in case." Save it into the bundle root as
+   `Dockerfile` (or `Dockerfile.gpu`) so the validator finds it automatically.
+2. **Build and test it in one step** — `scripts/validate_codabench_bundle.py`'s tier 4
+   does the build for you when the bundle has a Dockerfile at its root, tags it under an
+   obviously-local `benchmark-builder-local/<slug>:validate` namespace, and then runs the
+   real ingestion/scoring programs inside it:
    ```bash
-   docker build -t <dockerhub-username>/<image-name>:<tag> -f Dockerfile.template .
+   python scripts/validate_codabench_bundle.py <bundle_dir> --submission <sample_submission.zip> --docker
    ```
-3. **Test it before publishing anything**: point `scripts/validate_codabench_bundle.py`'s
-   `--docker` tier at the locally-tagged image (temporarily set `docker_image` in
-   `competition.yaml` to the same `<username>/<image-name>:<tag>`) and confirm the
-   ingestion/scoring programs actually run inside it. This needs no registry account and
-   publishes nothing.
-4. **Publishing the image is a public action — always get explicit user confirmation
+   Everything here is local and reversible — build, pull, run, and optionally
+   `--rm-built-image` to delete the image it built afterwards. Useful flags:
+   `--dockerfile PATH` (non-standard location), `--no-build` (skip building, just
+   use/pull `competition.yaml`'s `docker_image`), `--gpus` (pass `--gpus all`).
+   The local build tag is deliberately *not* the published image name, so a test build
+   can never be mistaken for — or accidentally pushed as — the real one. Tier 4 warns
+   when it validated a locally-built image while `competition.yaml` declares a different
+   `docker_image`, since Codabench will pull the declared one, not your local build.
+   If the bundle has no Dockerfile, tier 4 just uses `docker_image`, pulling it if it
+   isn't already present locally.
+3. **Publishing the image is a public action — always get explicit user confirmation
    before running `docker push`, every time, not just once per project.** Pushing to
    DockerHub makes the image publicly pullable (unless the user has a private repo set
-   up, which has its own cost/auth implications to flag). Once confirmed:
+   up, which has its own cost/auth implications to flag). The validator deliberately
+   never pushes; that step is manual and confirmed:
    ```bash
    docker login
    docker push <dockerhub-username>/<image-name>:<tag>
    ```
-5. Set `docker_image: <dockerhub-username>/<image-name>:<tag>` in `competition.yaml` to
-   match exactly what was pushed.
+   (Tag the tested image for the real name first:
+   `docker tag benchmark-builder-local/<slug>:validate <dockerhub-username>/<image-name>:<tag>`.)
+4. Set `docker_image: <dockerhub-username>/<image-name>:<tag>` in `competition.yaml` to
+   match exactly what was pushed, then re-run tier 4 with `--no-build` to confirm the
+   *published* image (not just your local build) actually works.
 
 Codabench's docs don't state whether private registries or auth-gated images are
 supported at all — don't assume either way; if the user needs this, tell them to verify

@@ -18,14 +18,23 @@ Four tiers, each gated on the previous one making sense to attempt:
      subprocesses against a temp directory, and checks the resulting scores.json has
      every key the leaderboard expects.
   4. Docker faithful run -- best-effort, only attempted with --docker and a reachable
-     Docker daemon. Mounts the exact /app/... paths real Codabench uses, inside the
-     competition's declared docker_image. This has NOT been validated against the real
-     Codabench platform itself (no way to do that from here) -- treat a pass as "the
-     programs run in the declared image," not "Codabench will definitely accept this."
+     Docker daemon. Resolves the image first (builds the bundle's own Dockerfile if it
+     has one, otherwise uses/pulls competition.yaml's docker_image), then mounts the
+     exact /app/... paths real Codabench uses and runs the real ingestion/scoring
+     commands inside it. This has NOT been validated against the real Codabench platform
+     itself (no way to do that from here) -- treat a pass as "the programs run in this
+     image," not "Codabench will definitely accept this."
+
+Tier 4 only ever does local, reversible things: build, pull, run, and (with
+--rm-built-image) delete an image it built itself. It never runs `docker push` -- see
+references/codabench.md; publishing an image is a public action that needs explicit
+per-instance user confirmation and is deliberately out of scope for an automated
+validator.
 
 Usage:
     python validate_codabench_bundle.py <bundle_dir> [--submission sub.zip]
-        [--task-index 0] [--docker]
+        [--task-index 0] [--docker] [--dockerfile PATH] [--no-build]
+        [--gpus] [--rm-built-image]
 """
 
 import argparse
@@ -379,84 +388,217 @@ def local_dry_run(bundle_dir, comp, task_index, submission_zip):
 
 
 def docker_available():
+    """(available, reason) -- reason explains the failure so tier 4 can say *why* it
+    skipped rather than a bare 'not available'."""
     try:
-        result = subprocess.run(["docker", "info"], capture_output=True, timeout=10)
+        result = subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=15)
+        if result.returncode == 0:
+            return True, ""
+        # docker binary exists but the daemon isn't reachable -- the common case on a
+        # dev box where Docker Desktop simply isn't started.
+        stderr = (result.stderr or "").strip().splitlines()
+        detail = stderr[-1] if stderr else f"exit {result.returncode}"
+        return False, f"docker daemon not reachable ({detail})"
+    except FileNotFoundError:
+        return False, "docker is not installed / not on PATH"
+    except subprocess.TimeoutExpired:
+        return False, "docker info timed out after 15s"
+
+
+def find_bundle_dockerfile(bundle_dir, explicit=None):
+    """Locate a Dockerfile to build for this bundle. An explicit --dockerfile wins;
+    otherwise look for the conventional names at the bundle root. Returns None if the
+    bundle doesn't ship one (the normal case -- most bundles just use a stock image)."""
+    if explicit:
+        p = Path(explicit)
+        if not p.is_absolute():
+            p = bundle_dir / p
+        return p if p.exists() else None
+    for name in ("Dockerfile", "Dockerfile.gpu"):
+        candidate = bundle_dir / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def image_exists_locally(image):
+    try:
+        result = subprocess.run(["docker", "image", "inspect", image], capture_output=True, timeout=30)
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 
 
-def docker_dry_run(bundle_dir, comp, task_index, submission_zip):
-    if not docker_available():
-        return [Issue("info", "Docker not available/reachable -- skipping tier 4 (faithful Docker run)")]
+def local_build_tag(comp):
+    """Deterministic, obviously-local tag for an image we build ourselves. Kept distinct
+    from competition.yaml's docker_image so a local test build can never be confused
+    with (or accidentally pushed as) the published image."""
+    title = str(comp.get("title", "benchmark")).lower()
+    # Strip AFTER truncating too: a cut mid-word can leave a trailing "-", which
+    # Docker rejects as an invalid repository name.
+    slug = re.sub(r"[^a-z0-9]+", "-", title).strip("-")[:40].strip("-") or "benchmark"
+    return f"benchmark-builder-local/{slug}:validate"
 
-    image = comp.get("docker_image", "codalab/codalab-legacy:py3")
-    issues = [Issue("warning", f"tier 4 is best-effort and has not been validated against the real Codabench platform -- treat a pass as 'runs in {image}', not a guarantee Codabench will accept it")]
+
+def resolve_image(bundle_dir, comp, dockerfile=None, allow_build=True):
+    """Figure out which image tier 4 should run in, building or pulling as needed.
+    Returns (image_or_None, issues). All local/reversible -- never pushes."""
+    issues = []
+    declared = comp.get("docker_image", "codalab/codalab-legacy:py3")
+
+    dockerfile_path = find_bundle_dockerfile(bundle_dir, dockerfile) if allow_build else None
+    if dockerfile_path:
+        tag = local_build_tag(comp)
+        issues.append(Issue("info", f"building {dockerfile_path.name} -> {tag} (local only, never pushed)"))
+        cmd = ["docker", "build", "-t", tag, "-f", str(dockerfile_path), str(dockerfile_path.parent)]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        except subprocess.TimeoutExpired:
+            issues.append(Issue("error", "docker build timed out after 30 minutes"))
+            return None, issues
+        if result.returncode != 0:
+            tail = "\n".join((result.stderr or result.stdout or "").strip().splitlines()[-25:])
+            issues.append(Issue("error", f"docker build failed:\n{tail}"))
+            return None, issues
+        issues.append(Issue("info", f"built {tag} successfully"))
+        if declared and not declared.startswith("benchmark-builder-local/"):
+            issues.append(Issue("warning", f"validating against the locally-built image, but competition.yaml declares docker_image: {declared} -- Codabench will pull THAT image, so make sure this Dockerfile is what's actually published there before going live"))
+        return tag, issues
+
+    # No Dockerfile to build: use the declared image, pulling it if we don't have it.
+    if image_exists_locally(declared):
+        issues.append(Issue("info", f"using local image {declared}"))
+        return declared, issues
+
+    issues.append(Issue("info", f"image {declared} not present locally -- pulling"))
+    try:
+        result = subprocess.run(["docker", "pull", declared], capture_output=True, text=True, timeout=1800)
+    except subprocess.TimeoutExpired:
+        issues.append(Issue("error", f"docker pull {declared} timed out after 30 minutes"))
+        return None, issues
+    if result.returncode != 0:
+        tail = "\n".join((result.stderr or "").strip().splitlines()[-10:])
+        issues.append(Issue("error", f"docker pull {declared} failed -- is the image name/tag correct and public?\n{tail}"))
+        return None, issues
+    issues.append(Issue("info", f"pulled {declared}"))
+    return declared, issues
+
+
+def run_in_docker(image, mounts, workdir, command, label, use_gpus=False, timeout=600):
+    """Run one program inside the container with Codabench's real /app/... layout.
+    `mounts` is a list of (host_path, container_path, mode) tuples."""
+    cmd = ["docker", "run", "--rm"]
+    if use_gpus:
+        cmd += ["--gpus", "all"]
+    for host, container, mode in mounts:
+        suffix = f":{mode}" if mode else ""
+        cmd += ["-v", f"{host}:{container}{suffix}"]
+    cmd += ["-w", workdir, image, "bash", "-c", command]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return [Issue("error", f"{label} timed out after {timeout}s inside {image}")]
+    if result.returncode != 0:
+        return [Issue("error", f"{label} exited {result.returncode} inside {image}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")]
+    return [Issue("info", f"{label} ran successfully inside {image}")]
+
+
+def docker_dry_run(bundle_dir, comp, task_index, submission_zip,
+                   dockerfile=None, allow_build=True, use_gpus=False, rm_built_image=False):
+    available, reason = docker_available()
+    if not available:
+        return [Issue("info", f"skipping tier 4 (faithful Docker run): {reason}")]
+
     task = find_task(comp, task_index)
     if task is None:
-        return issues + [Issue("error", f"no task with index {task_index} found")]
+        return [Issue("error", f"no task with index {task_index} found")]
 
-    with tempfile.TemporaryDirectory(prefix="codabench_docker_") as tmp:
-        tmp = Path(tmp)
-        ingestion_path = task.get("ingestion_program")
-        res_dir_source = None
+    image, issues = resolve_image(bundle_dir, comp, dockerfile=dockerfile, allow_build=allow_build)
+    if image is None:
+        return issues
 
-        if ingestion_path:
-            ingest_root = tmp / "ingest"
-            shutil.copytree(bundle_dir / task["input_data"], ingest_root / "input_data")
-            shutil.copytree(bundle_dir / ingestion_path, ingest_root / "program")
-            (ingest_root / "output").mkdir(parents=True)
-            ingested = ingest_root / "ingested_program"
-            ingested.mkdir(parents=True)
-            with zipfile.ZipFile(submission_zip) as zf:
-                zf.extractall(ingested)
-            meta = yaml.safe_load((bundle_dir / ingestion_path / "metadata.yaml").read_text(encoding="utf-8"))
-            cmd = [
-                "docker", "run", "--rm",
-                "-v", f"{ingest_root / 'input_data'}:/app/input_data:ro",
-                "-v", f"{ingest_root / 'program'}:/app/program:ro",
-                "-v", f"{ingested}:/app/ingested_program:ro",
-                "-v", f"{ingest_root / 'output'}:/app/output",
-                "-w", "/app/program",
-                image, "bash", "-c", meta["command"],
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-            if result.returncode != 0:
-                issues.append(Issue("error", f"docker ingestion run failed:\n{result.stdout}\n{result.stderr}"))
+    built_locally = image.startswith("benchmark-builder-local/")
+    issues.append(Issue("warning", f"tier 4 is best-effort and has not been validated against the real Codabench platform -- treat a pass as 'the programs run in {image}', not a guarantee Codabench will accept the bundle"))
+
+    if use_gpus:
+        issues.append(Issue("info", "passing --gpus all; a GPU image also needs a GPU-capable Codabench compute worker attached to the competition's queue, which this check cannot verify"))
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="codabench_docker_") as tmp:
+            tmp = Path(tmp)
+            ingestion_path = task.get("ingestion_program")
+
+            if ingestion_path:
+                ingest_root = tmp / "ingest"
+                shutil.copytree(bundle_dir / task["input_data"], ingest_root / "input_data")
+                shutil.copytree(bundle_dir / ingestion_path, ingest_root / "program")
+                (ingest_root / "output").mkdir(parents=True)
+                ingested = ingest_root / "ingested_program"
+                ingested.mkdir(parents=True)
+                with zipfile.ZipFile(submission_zip) as zf:
+                    zf.extractall(ingested)
+                meta = yaml.safe_load((bundle_dir / ingestion_path / "metadata.yaml").read_text(encoding="utf-8"))
+                run_issues = run_in_docker(
+                    image,
+                    [
+                        (ingest_root / "input_data", "/app/input_data", "ro"),
+                        (ingest_root / "program", "/app/program", "ro"),
+                        (ingested, "/app/ingested_program", "ro"),
+                        (ingest_root / "output", "/app/output", None),
+                    ],
+                    "/app/program", meta["command"], "ingestion program", use_gpus=use_gpus,
+                )
+                issues += run_issues
+                if any(i.level == "error" for i in run_issues):
+                    return issues
+                res_dir_source = ingest_root / "output"
+            else:
+                res_dir_source = tmp / "results_submission"
+                res_dir_source.mkdir(parents=True)
+                with zipfile.ZipFile(submission_zip) as zf:
+                    zf.extractall(res_dir_source)
+
+            score_root = tmp / "score"
+            (score_root / "input").mkdir(parents=True)
+            shutil.copytree(bundle_dir / task["reference_data"], score_root / "input" / "ref")
+            shutil.copytree(res_dir_source, score_root / "input" / "res")
+            shutil.copytree(bundle_dir / task["scoring_program"], score_root / "program")
+            (score_root / "output").mkdir(parents=True)
+            meta = yaml.safe_load((bundle_dir / task["scoring_program"] / "metadata.yaml").read_text(encoding="utf-8"))
+            run_issues = run_in_docker(
+                image,
+                [
+                    (score_root / "input", "/app/input", "ro"),
+                    (score_root / "program", "/app/program", "ro"),
+                    (score_root / "output", "/app/output", None),
+                ],
+                "/app/program", meta["command"], "scoring program", use_gpus=use_gpus,
+            )
+            issues += run_issues
+            if any(i.level == "error" for i in run_issues):
                 return issues
-            issues.append(Issue("info", "docker ingestion run succeeded"))
-            res_dir_source = ingest_root / "output"
-        else:
-            res_dir_source = tmp / "results_submission"
-            res_dir_source.mkdir(parents=True)
-            with zipfile.ZipFile(submission_zip) as zf:
-                zf.extractall(res_dir_source)
 
-        score_root = tmp / "score"
-        (score_root / "input").mkdir(parents=True)
-        shutil.copytree(bundle_dir / task["reference_data"], score_root / "input" / "ref")
-        shutil.copytree(res_dir_source, score_root / "input" / "res")
-        shutil.copytree(bundle_dir / task["scoring_program"], score_root / "program")
-        (score_root / "output").mkdir(parents=True)
-        meta = yaml.safe_load((bundle_dir / task["scoring_program"] / "metadata.yaml").read_text(encoding="utf-8"))
-        cmd = [
-            "docker", "run", "--rm",
-            "-v", f"{score_root / 'input'}:/app/input:ro",
-            "-v", f"{score_root / 'program'}:/app/program:ro",
-            "-v", f"{score_root / 'output'}:/app/output",
-            "-w", "/app/program",
-            image, "bash", "-c", meta["command"],
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        if result.returncode != 0:
-            issues.append(Issue("error", f"docker scoring run failed:\n{result.stdout}\n{result.stderr}"))
-            return issues
+            scores_path = score_root / "output" / "scores.json"
+            if not scores_path.exists():
+                issues.append(Issue("error", "scoring program did not produce output/scores.json inside the container"))
+                return issues
+            try:
+                scores = json.loads(scores_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as e:
+                issues.append(Issue("error", f"scores.json produced in-container is not valid JSON: {e}"))
+                return issues
 
-        scores_path = score_root / "output" / "scores.json"
-        if not scores_path.exists():
-            issues.append(Issue("error", "docker scoring run did not produce scores.json"))
-        else:
-            issues.append(Issue("info", f"docker scoring run succeeded: {scores_path.read_text()}"))
+            issues.append(Issue("info", f"scores.json (in-container): {scores}"))
+            for lb in comp.get("leaderboards", []) or []:
+                for col in lb.get("columns", []) or []:
+                    if col.get("key") not in scores:
+                        issues.append(Issue("error", f"leaderboard '{lb.get('title')}' expects key '{col.get('key')}' but in-container scores.json has {list(scores.keys())}"))
+    finally:
+        # Only ever remove an image we built ourselves this run -- never a pulled or
+        # pre-existing one, which may be shared with other projects on this machine.
+        if rm_built_image and built_locally:
+            result = subprocess.run(["docker", "image", "rm", image], capture_output=True, text=True, timeout=120)
+            issues.append(Issue("info", f"removed locally-built image {image}" if result.returncode == 0 else f"could not remove {image}: {(result.stderr or '').strip()}"))
 
     return issues
 
@@ -469,7 +611,11 @@ def main():
     parser.add_argument("bundle_dir", type=Path)
     parser.add_argument("--submission", type=Path, help="Path to a submission .zip to validate against the bundle")
     parser.add_argument("--task-index", type=int, default=0)
-    parser.add_argument("--docker", action="store_true", help="Also attempt tier 4 (faithful Docker run)")
+    parser.add_argument("--docker", action="store_true", help="Also attempt tier 4 (faithful Docker run): build/pull the image and run the real programs inside it")
+    parser.add_argument("--dockerfile", help="Dockerfile to build for tier 4 (default: auto-detect Dockerfile/Dockerfile.gpu at the bundle root)")
+    parser.add_argument("--no-build", action="store_true", help="Tier 4: never build, always use competition.yaml's docker_image (pulling it if needed)")
+    parser.add_argument("--gpus", action="store_true", help="Tier 4: pass --gpus all to docker run (needs a GPU + container toolkit)")
+    parser.add_argument("--rm-built-image", action="store_true", help="Tier 4: delete the image afterwards, but only if this run built it")
     args = parser.parse_args()
 
     bundle_dir = args.bundle_dir.resolve()
@@ -499,7 +645,11 @@ def main():
 
         if args.docker:
             print("\n=== Tier 4: Docker faithful run ===")
-            issues = docker_dry_run(bundle_dir, comp, args.task_index, args.submission)
+            issues = docker_dry_run(
+                bundle_dir, comp, args.task_index, args.submission,
+                dockerfile=args.dockerfile, allow_build=not args.no_build,
+                use_gpus=args.gpus, rm_built_image=args.rm_built_image,
+            )
             all_issues += issues
             for i in issues:
                 print(i)
