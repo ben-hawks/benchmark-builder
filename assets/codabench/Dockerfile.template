@@ -1,0 +1,27 @@
+# Custom CPU image for a Codabench competition -- extends the real, stock
+# codalab/codalab-legacy:py312 base (Dockerfile verified against
+# https://github.com/codalab/codalab-dockers/blob/master/Dockerfiles/Dockerfile-py312
+# on 2026-08-25) rather than building from scratch. Only reach for this file if the
+# reference solution's actual dependency list isn't already covered by a stock image --
+# see references/codabench.md's "Docker image" section for the stock-image table first.
+#
+# NOT build-tested in the session that authored this template (no Docker daemon
+# available) -- the base layer is real and verified, but build this yourself and run it
+# through `scripts/validate_codabench_bundle.py --docker` before trusting it.
+FROM codalab/codalab-legacy:py312
+
+# --- Add exactly what the reference solution's own requirements.txt/environment.yml
+# lists. Don't add packages "just in case" -- every extra package is another thing that
+# can silently go stale relative to what's actually used. ---
+# RUN python -m pip install \
+#     <package>==<version> \
+#     <package>==<version>
+
+# If the reference solution needs a system package (apt), add it before the pip install
+# step so pip can link against it if needed:
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#     <package> \
+#     && rm -rf /var/lib/apt/lists/*
+
+# Keep the base image's entrypoint/CMD -- Codabench invokes ingestion/scoring programs
+# via each program's own metadata.yaml `command`, not via this image's CMD.

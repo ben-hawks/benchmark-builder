@@ -1,0 +1,87 @@
+# Toy Linear Regression -- the benchmark-builder skill's own worked example bundle.
+# A minimal but complete, VALIDATED Codabench competition (see
+# scripts/validate_codabench_bundle.py and references/codabench.md). Pattern-match
+# against this file when adapting a real benchmark; don't upload this one as-is.
+version: 2
+title: Toy Linear Regression (benchmark-builder example)
+description: Minimal worked example of a Codabench code-submission bundle -- predict y from two features.
+image: logo.png
+registration_auto_approve: True
+docker_image: codalab/codalab-legacy:py312
+
+terms: pages/terms_and_conditions.md
+pages:
+  - title: Overview
+    file: pages/overview.md
+  - title: Data
+    file: pages/data.md
+  - title: Evaluation
+    file: pages/evaluation.md
+
+# Two tasks, one per phase, mirroring the dev/final split already established for the
+# dataset in the standalone benchmark (references/ontology.md's Dataset element).
+tasks:
+  - index: 0
+    name: Development Task
+    description: 'Tune your model against 20 development-phase test samples.'
+    input_data: dev_phase/input_data/
+    reference_data: dev_phase/reference_data/
+    ingestion_program: ingestion_program/
+    scoring_program: scoring_program/
+  - index: 1
+    name: Final Task
+    description: 'Final, unseen 20-sample test set -- run once.'
+    input_data: final_phase/input_data/
+    reference_data: final_phase/reference_data/
+    ingestion_program: ingestion_program/
+    scoring_program: scoring_program/
+
+# The reference solution doubles as the example submission (starting_kit/sample_submission.zip
+# is this same file, re-zipped) -- see references/codabench.md's mapping table.
+solutions:
+  - index: 0
+    tasks:
+      - 0
+      - 1
+    path: solution/
+
+phases:
+  - index: 0
+    name: Development Phase
+    description: 'Iterate freely.'
+    start: 1-1-2026
+    end: 12-31-2026
+    tasks:
+      - 0
+    starting_kit: starting_kit
+    public_data: public_data
+  - index: 1
+    name: Final Phase
+    description: 'One shot against fresh, unseen data.'
+    max_submissions: 1
+    start: 1-1-2027
+    tasks:
+      - 1
+
+leaderboards:
+  - title: Results
+    key: main
+    submission_rule: "Force_Last"
+    columns:
+      - title: R-squared
+        key: r_squared
+        index: 0
+        sorting: desc
+        precision: 4
+      - title: RMSE
+        key: rmse
+        index: 1
+        sorting: asc
+        precision: 4
+      - title: Duration (s)
+        key: duration
+        index: 2
+        sorting: asc
+        precision: 3
+
+# Learn more: https://docs.codabench.org/latest/Organizers/Benchmark_Creation/Competition-Bundle-Structure/

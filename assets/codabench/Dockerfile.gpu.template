@@ -1,0 +1,33 @@
+# Custom GPU image for a Codabench competition -- extends the real, stock
+# codalab/codalab-legacy:gpu310 base (Dockerfile verified against
+# https://github.com/codalab/codalab-dockers/blob/master/Dockerfiles/Dockerfile-gpu310
+# on 2026-08-25) rather than building from scratch. That base already includes
+# torch==2.3.1 and tensorflow==2.16.1 -- if the reference solution only needs those,
+# use the stock image directly and skip this file entirely (see
+# references/codabench.md's "Docker image" section).
+#
+# Reach for this file when something ON TOP of torch/tensorflow is needed -- e.g.
+# wa-hls4ml's GNN surrogate model needs PyTorch Geometric, which the stock image does
+# NOT include and which must be installed matching the base's exact torch version.
+#
+# NOT build-tested in the session that authored this template (no Docker daemon
+# available) -- the base layer is real and verified, but build this yourself and run it
+# through `scripts/validate_codabench_bundle.py --docker` before trusting it. A GPU
+# image also needs a GPU-capable compute worker attached to the competition's queue --
+# see references/codabench.md's note on this; it's separate infrastructure, not
+# something this Dockerfile controls.
+FROM codalab/codalab-legacy:gpu310
+
+# --- PyTorch Geometric example: must match the base image's torch build (2.3.1) and
+# CUDA version (12.4) exactly, or it will fail at import time, not at build time. Check
+# https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html for the
+# current wheel index matching your actual base image's torch+CUDA before uncommenting. ---
+# RUN python3 -m pip install torch_geometric \
+#     -f https://data.pyg.org/whl/torch-2.3.1+cu124.html
+
+# --- Add any other reference-solution-specific packages the same way: ---
+# RUN python3 -m pip install \
+#     <package>==<version>
+
+# Keep the base image's WORKDIR/entrypoint -- Codabench invokes ingestion/scoring
+# programs via each program's own metadata.yaml `command`, not via this image's CMD.
