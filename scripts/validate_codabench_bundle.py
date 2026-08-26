@@ -54,6 +54,7 @@ except ImportError:
     sys.exit("Missing dependency: pyyaml. Install it with `pip install pyyaml` and re-run.")
 
 REQUIRED_TOP_KEYS = ["version", "title", "image", "terms"]
+DEFAULT_DOCKER_IMAGE = "codalab/codalab-legacy:py3"
 DATE_FORMATS = [
     "%Y-%m-%d %H:%M:%S",  # documented format
     "%Y-%m-%d",
@@ -444,7 +445,7 @@ def resolve_image(bundle_dir, comp, dockerfile=None, allow_build=True):
     """Figure out which image tier 4 should run in, building or pulling as needed.
     Returns (image_or_None, issues). All local/reversible -- never pushes."""
     issues = []
-    declared = comp.get("docker_image", "codalab/codalab-legacy:py3")
+    declared = comp.get("docker_image", DEFAULT_DOCKER_IMAGE)
 
     dockerfile_path = find_bundle_dockerfile(bundle_dir, dockerfile) if allow_build else None
     if dockerfile_path:
@@ -461,8 +462,10 @@ def resolve_image(bundle_dir, comp, dockerfile=None, allow_build=True):
             issues.append(Issue("error", f"docker build failed:\n{tail}"))
             return None, issues
         issues.append(Issue("info", f"built {tag} successfully"))
-        if declared and not declared.startswith("benchmark-builder-local/"):
-            issues.append(Issue("warning", f"validating against the locally-built image, but competition.yaml declares docker_image: {declared} -- Codabench will pull THAT image, so make sure this Dockerfile is what's actually published there before going live"))
+        if declared == DEFAULT_DOCKER_IMAGE:
+            issues.append(Issue("warning", f"{dockerfile_path.name} exists but competition.yaml's docker_image is still the stock default ({DEFAULT_DOCKER_IMAGE}) -- set it to the name you intend to push this custom image as before going live"))
+        else:
+            issues.append(Issue("info", f"validated the local build, not competition.yaml's declared docker_image ({declared}) directly -- after `docker push`, re-run with --no-build to confirm the published image matches what was just tested"))
         return tag, issues
 
     # No Dockerfile to build: use the declared image, pulling it if we don't have it.
