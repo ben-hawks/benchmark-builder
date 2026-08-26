@@ -245,7 +245,11 @@ source is exactly the kind of unreproducible artifact this skill exists to avoid
    Everything here is local and reversible — build, pull, run, and optionally
    `--rm-built-image` to delete the image it built afterwards. Useful flags:
    `--dockerfile PATH` (non-standard location), `--no-build` (skip building, just
-   use/pull `competition.yaml`'s `docker_image`), `--gpus` (pass `--gpus all`).
+   use/pull `competition.yaml`'s `docker_image`), `--gpus` (pass `--gpus all`),
+   `--timeout SECONDS` (defaults to the phase's own `execution_time_limit`, or
+   600s if unset — raise this for a benchmark with real training cost; the toy
+   example trains near-instantly, but a benchmark like Jet Classification needs
+   minutes, not the tool's old hardcoded 120s default).
    The local build tag is deliberately *not* the published image name, so a test build
    can never be mistaken for — or accidentally pushed as — the real one. Tier 4 warns
    when it validated a locally-built image while `competition.yaml` declares a different

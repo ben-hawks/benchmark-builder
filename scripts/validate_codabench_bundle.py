@@ -55,6 +55,7 @@ except ImportError:
 
 REQUIRED_TOP_KEYS = ["version", "title", "image", "terms"]
 DEFAULT_DOCKER_IMAGE = "codalab/codalab-legacy:py3"
+DEFAULT_EXECUTION_TIMEOUT = 600  # Codabench's own stated default, used when the bundle doesn't say
 DATE_FORMATS = [
     "%Y-%m-%d %H:%M:%S",  # documented format
     "%Y-%m-%d",
@@ -289,7 +290,7 @@ def _runs(executable):
         return False
 
 
-def run_program(program_dir, root_dir, label):
+def run_program(program_dir, root_dir, label, timeout=DEFAULT_EXECUTION_TIMEOUT):
     meta = yaml.safe_load((Path(program_dir) / "metadata.yaml").read_text(encoding="utf-8"))
     command = meta["command"]
     prefix_issue = None
@@ -303,11 +304,15 @@ def run_program(program_dir, root_dir, label):
         prefix_issue = Issue("info", f"{label}: substituted 'python' for 'python3' (host's python3 doesn't actually run) -- local-testing only, does not affect the real container")
     env = dict(os.environ)
     env["CODABENCH_ROOT"] = str(root_dir)
-    result = subprocess.run(
-        command, shell=True, cwd=str(program_dir), env=env,
-        capture_output=True, text=True, timeout=120,
-    )
     issues = [prefix_issue] if prefix_issue else []
+    try:
+        result = subprocess.run(
+            command, shell=True, cwd=str(program_dir), env=env,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        issues.append(Issue("error", f"{label} did not finish within {timeout}s -- pass --timeout for a benchmark whose programs need longer than the default (real training, not a toy example's near-instant fit)"))
+        return issues
     if result.returncode != 0:
         issues.append(Issue("error", f"{label} exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"))
     else:
@@ -315,11 +320,29 @@ def run_program(program_dir, root_dir, label):
     return issues
 
 
-def local_dry_run(bundle_dir, comp, task_index, submission_zip):
+
+def bundle_execution_timeout(comp, task_index, override=None):
+    """Prefer an explicit --timeout; otherwise use whatever execution_time_limit
+    the phase containing this task declares in competition.yaml; otherwise
+    Codabench's own documented default. A benchmark with real training cost
+    (unlike the toy example, which trains near-instantly) needs this -- a
+    fixed generic timeout would either be too short for a real benchmark or
+    needlessly long for a trivial one."""
+    if override is not None:
+        return override
+    for phase in comp.get("phases", []) or []:
+        if task_index in (phase.get("tasks") or []):
+            limit = phase.get("execution_time_limit")
+            if limit:
+                return int(limit)
+    return DEFAULT_EXECUTION_TIMEOUT
+
+def local_dry_run(bundle_dir, comp, task_index, submission_zip, timeout=None):
     issues = []
     task = find_task(comp, task_index)
     if task is None:
         return [Issue("error", f"no task with index {task_index} found")]
+    effective_timeout = bundle_execution_timeout(comp, task_index, override=timeout)
 
     scoring_dir = bundle_dir / task["scoring_program"]
     ingestion_path = task.get("ingestion_program")
@@ -342,7 +365,7 @@ def local_dry_run(bundle_dir, comp, task_index, submission_zip):
             ingested.mkdir(parents=True)
             with zipfile.ZipFile(submission_zip) as zf:
                 zf.extractall(ingested)
-            run_issues = run_program(ingest_root / "program", ingest_root, "ingestion program")
+            run_issues = run_program(ingest_root / "program", ingest_root, "ingestion program", timeout=effective_timeout)
             issues += run_issues
             if any(i.level == "error" for i in run_issues):
                 return issues
@@ -359,7 +382,7 @@ def local_dry_run(bundle_dir, comp, task_index, submission_zip):
         shutil.copytree(res_dir_source, score_root / "input" / "res")
         shutil.copytree(scoring_dir, score_root / "program")
         (score_root / "output").mkdir(parents=True)
-        run_issues = run_program(score_root / "program", score_root, "scoring program")
+        run_issues = run_program(score_root / "program", score_root, "scoring program", timeout=effective_timeout)
         issues += run_issues
         if any(i.level == "error" for i in run_issues):
             return issues
@@ -392,7 +415,7 @@ def docker_available():
     """(available, reason) -- reason explains the failure so tier 4 can say *why* it
     skipped rather than a bare 'not available'."""
     try:
-        result = subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=15)
+        result = subprocess.run(["docker", "info"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
         if result.returncode == 0:
             return True, ""
         # docker binary exists but the daemon isn't reachable -- the common case on a
@@ -453,7 +476,7 @@ def resolve_image(bundle_dir, comp, dockerfile=None, allow_build=True):
         issues.append(Issue("info", f"building {dockerfile_path.name} -> {tag} (local only, never pushed)"))
         cmd = ["docker", "build", "-t", tag, "-f", str(dockerfile_path), str(dockerfile_path.parent)]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800)
         except subprocess.TimeoutExpired:
             issues.append(Issue("error", "docker build timed out after 30 minutes"))
             return None, issues
@@ -475,7 +498,7 @@ def resolve_image(bundle_dir, comp, dockerfile=None, allow_build=True):
 
     issues.append(Issue("info", f"image {declared} not present locally -- pulling"))
     try:
-        result = subprocess.run(["docker", "pull", declared], capture_output=True, text=True, timeout=1800)
+        result = subprocess.run(["docker", "pull", declared], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800)
     except subprocess.TimeoutExpired:
         issues.append(Issue("error", f"docker pull {declared} timed out after 30 minutes"))
         return None, issues
@@ -498,7 +521,7 @@ def run_in_docker(image, mounts, workdir, command, label, use_gpus=False, timeou
         cmd += ["-v", f"{host}:{container}{suffix}"]
     cmd += ["-w", workdir, image, "bash", "-c", command]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired:
         return [Issue("error", f"{label} timed out after {timeout}s inside {image}")]
     if result.returncode != 0:
@@ -507,7 +530,8 @@ def run_in_docker(image, mounts, workdir, command, label, use_gpus=False, timeou
 
 
 def docker_dry_run(bundle_dir, comp, task_index, submission_zip,
-                   dockerfile=None, allow_build=True, use_gpus=False, rm_built_image=False):
+                   dockerfile=None, allow_build=True, use_gpus=False, rm_built_image=False,
+                   timeout=None):
     available, reason = docker_available()
     if not available:
         return [Issue("info", f"skipping tier 4 (faithful Docker run): {reason}")]
@@ -519,6 +543,7 @@ def docker_dry_run(bundle_dir, comp, task_index, submission_zip,
     image, issues = resolve_image(bundle_dir, comp, dockerfile=dockerfile, allow_build=allow_build)
     if image is None:
         return issues
+    effective_timeout = bundle_execution_timeout(comp, task_index, override=timeout)
 
     built_locally = image.startswith("benchmark-builder-local/")
     issues.append(Issue("warning", f"tier 4 is best-effort and has not been validated against the real Codabench platform -- treat a pass as 'the programs run in {image}', not a guarantee Codabench will accept the bundle"))
@@ -550,6 +575,7 @@ def docker_dry_run(bundle_dir, comp, task_index, submission_zip,
                         (ingest_root / "output", "/app/output", None),
                     ],
                     "/app/program", meta["command"], "ingestion program", use_gpus=use_gpus,
+                    timeout=effective_timeout,
                 )
                 issues += run_issues
                 if any(i.level == "error" for i in run_issues):
@@ -576,6 +602,7 @@ def docker_dry_run(bundle_dir, comp, task_index, submission_zip,
                     (score_root / "output", "/app/output", None),
                 ],
                 "/app/program", meta["command"], "scoring program", use_gpus=use_gpus,
+                timeout=effective_timeout,
             )
             issues += run_issues
             if any(i.level == "error" for i in run_issues):
@@ -600,7 +627,7 @@ def docker_dry_run(bundle_dir, comp, task_index, submission_zip,
         # Only ever remove an image we built ourselves this run -- never a pulled or
         # pre-existing one, which may be shared with other projects on this machine.
         if rm_built_image and built_locally:
-            result = subprocess.run(["docker", "image", "rm", image], capture_output=True, text=True, timeout=120)
+            result = subprocess.run(["docker", "image", "rm", image], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
             issues.append(Issue("info", f"removed locally-built image {image}" if result.returncode == 0 else f"could not remove {image}: {(result.stderr or '').strip()}"))
 
     return issues
@@ -619,6 +646,7 @@ def main():
     parser.add_argument("--no-build", action="store_true", help="Tier 4: never build, always use competition.yaml's docker_image (pulling it if needed)")
     parser.add_argument("--gpus", action="store_true", help="Tier 4: pass --gpus all to docker run (needs a GPU + container toolkit)")
     parser.add_argument("--rm-built-image", action="store_true", help="Tier 4: delete the image afterwards, but only if this run built it")
+    parser.add_argument("--timeout", type=int, help="Seconds to allow ingestion/scoring programs to run (tiers 3-4). Default: the bundle's own phase execution_time_limit, or 600s if unset -- override for a benchmark whose real training cost exceeds that.")
     args = parser.parse_args()
 
     bundle_dir = args.bundle_dir.resolve()
@@ -641,7 +669,7 @@ def main():
             print(i)
 
         print("\n=== Tier 3: local functional dry run ===")
-        issues = local_dry_run(bundle_dir, comp, args.task_index, args.submission)
+        issues = local_dry_run(bundle_dir, comp, args.task_index, args.submission, timeout=args.timeout)
         all_issues += issues
         for i in issues:
             print(i)
@@ -652,6 +680,7 @@ def main():
                 bundle_dir, comp, args.task_index, args.submission,
                 dockerfile=args.dockerfile, allow_build=not args.no_build,
                 use_gpus=args.gpus, rm_built_image=args.rm_built_image,
+                timeout=args.timeout,
             )
             all_issues += issues
             for i in issues:
