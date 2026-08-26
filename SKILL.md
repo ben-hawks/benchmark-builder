@@ -1,6 +1,6 @@
 ---
 name: benchmark-builder
-description: Walks a user through designing, structuring, documenting, and self-scoring a scientific ML benchmark that conforms to the MLCommons Science Benchmarks Ontology (five-element benchmark definition, six-category/27-point rating rubric, arXiv:2511.05614) and, once built, packaging it as a Codabench competition bundle with a validated example submission. Use whenever the user wants to build, formalize, publish, or clean up a benchmark, dataset+task+metric suite, or reproducibility package -- even if they never say "MLCommons," "ontology," or "Codabench" explicitly. Trigger on requests like "turn my model comparison into a proper benchmark," "structure this repo so others can reproduce our results," "grade how good our benchmark documentation is," or "make this a Codabench competition." Also use it to self-score an EXISTING benchmark against the rubric (qualify for MLCommons Endorsement, average >= 4.5/5) or validate an existing Codabench bundle.
+description: Walks a user through designing, structuring, documenting, and self-scoring a scientific ML benchmark that conforms to the MLCommons Science Benchmarks Ontology (five-element benchmark definition, six-category/27-point rating rubric, arXiv:2511.05614) and, once built, packaging it as a Codabench competition bundle with a validated example submission. Use whenever the user wants to build, formalize, publish, or clean up a benchmark, dataset+task+metric suite, or reproducibility package -- even if they never say "MLCommons," "ontology," or "Codabench" explicitly. Trigger on requests like "turn my model comparison into a proper benchmark," "structure this repo so others can reproduce our results," "grade how good our benchmark documentation is," or "make this a Codabench competition." Also use it to self-score an EXISTING benchmark, validate an existing Codabench bundle, or generate an MLCommons corpus entry YAML for a benchmark that already exists.
 ---
 
 # Building an MLCommons-ontology-conformant benchmark
@@ -25,6 +25,11 @@ rubric, and shows what a complete answer to each element actually looks like in 
 its "required / strongly recommended / suggested" submission-guidelines pattern and its
 closing point about documenting known limitations rather than hiding them are worth
 reusing directly.
+
+Once the standalone benchmark and its rubric score exist, also generate an MLCommons
+corpus entry (a separate, single-YAML-file deliverable for the real public corpus at
+https://mlcommons-science.github.io/benchmark/) -- see "Generate an MLCommons corpus
+entry" below and read `references/mlcommons-corpus-format.md` in full before touching it.
 
 If the user wants the benchmark packaged for Codabench (upload-ready, participants can
 submit against it), that's a separate, later phase -- see "Adapt into a Codabench
@@ -229,6 +234,45 @@ scorer after each fix so the user sees the number move -- that feedback loop is 
 convincing than a wall of remaining TODOs. Stop when the user is satisfied with the
 score (they may not need or want 5/5 or endorsement-level on every category -- that's
 their call, not a target to impose).
+
+## Generate an MLCommons corpus entry
+
+Once the standalone benchmark and its rubric score both exist, also generate
+a corpus entry — a single YAML file meant to be appended to the real
+MLCommons Science Benchmarks corpus (https://mlcommons-science.github.io/benchmark/),
+not part of the benchmark package's own structure. Read
+`references/mlcommons-corpus-format.md` in full first; it has the exact
+field-by-field mapping from what you already built onto this separate schema,
+including two real ambiguities in the source schema itself and one real
+schema-vs-practice mismatch found by testing this skill's validator against
+an actual cataloged entry (don't rediscover these by guessing — they're
+documented).
+
+1. **Start from `assets/mlcommons_corpus_entry_template.yaml`.** Most fields
+   map directly from work already done — the reference doc's table says
+   exactly where each one comes from (rubric.yaml's six scores map 1:1 onto
+   `ratings`, no rescaling needed). A few fields (`keywords`,
+   `ai_capability_measured`, `ml_task`) aren't collected anywhere else in this
+   skill's workflow — synthesize them from what you already know rather than
+   leaving them blank, but say plainly that they're a synthesis, not a fact
+   pulled from a source.
+2. **Ask about `url` and `contact` rather than assuming.** If this is a
+   formalized existing benchmark (not built from scratch), the reference
+   doc's "The url decision" section explains why this is a real, unresolved
+   choice between the upstream project and the newly-formalized package --
+   ask the user. Similarly, never default to listing the user's own contact
+   info without asking first.
+3. **Only set `valid: true` / `fair.reproducible: true` / `fair.benchmark_ready: true`
+   if actually verified**, the same bar this skill already applies everywhere
+   else -- these are booleans per the documented schema (a real cataloged
+   entry using strings instead is a known, documented mismatch to not repeat).
+4. **Validate before calling it done**:
+   ```bash
+   python scripts/validate_corpus_entry.py <entry.yaml>
+   ```
+   Fix everything it flags as an error; warnings (e.g. the deprecated
+   `solutions` field, or `ml_motif` diverging from `task_types`) are judgment
+   calls to consider, not blockers.
 
 ## Adapt into a Codabench Competition Bundle
 

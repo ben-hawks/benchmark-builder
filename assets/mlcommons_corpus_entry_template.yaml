@@ -1,0 +1,99 @@
+# MLCommons Science Benchmarks corpus entry
+# Format: https://github.com/mlcommons-science/benchmark/blob/main/source/benchmarks-format.yaml
+# See references/mlcommons-corpus-format.md for the full field-by-field guide,
+# the ratings-mapping table, and two real ambiguities in the source schema
+# (ml_motif's own example contradicts its own real cataloged entry; the
+# "unevaluated" rating sentinel is inconsistent between 0 and -1).
+#
+# This is a ONE-ITEM LIST (the real corpus is a list of these) -- keep the
+# leading "-" so this file is directly appendable/mergeable into it.
+
+- date: ""                      # required -- benchmark availability date (paper date, or today if none)
+  version: "v1.0"                # optional
+  last_updated: ""               # optional -- today
+  expired: "no"                  # optional -- 'yes' or 'no'
+  valid: true                    # required -- only true if actually verified working
+  valid_date: ""                 # required -- date last verified
+
+  name: ""                       # required
+  url: ""                        # required -- see "The url decision" in the reference doc
+  doi: ""                        # optional -- omit entirely if none exists, don't fabricate
+
+  domain:                        # required, >=1 -- from Scientific Motif(s)
+    - ""
+
+  focus: ""                      # required -- one sentence
+
+  keywords:                      # required, >=1
+    - ""
+
+  summary: |                     # required -- plain-language description
+
+
+  licensing: ""                  # required
+
+  task_types:                    # required, >=1 -- from AI/ML Motif
+    - ""
+
+  ai_capability_measured:        # required, >=1
+    - ""
+
+  metrics:                       # required, >=1 -- names only, formulas live in the benchmark card
+    - ""
+
+  models:                        # required, >=1
+    - ""
+
+  ml_motif:                      # required, >=1 -- default to matching task_types (see reference doc)
+    - ""
+
+  type: "Benchmark"               # required
+
+  ml_task:                       # required, >=1 -- learning paradigm(s)
+    - ""
+
+  # solutions field is deprecated per the source schema -- omitted deliberately
+
+  notes: ""                       # optional
+
+  contact:                       # optional -- ASK before filling in, don't default to the user's own info
+    name: ""
+    email: ""
+
+  cite:                          # required, >=1 -- must be actual bibtex, not a bare URL
+    - |
+
+
+  datasets:
+    links:                       # required, >=1
+      - name: ""
+        url: ""
+
+  results:
+    links:                       # required, >=1
+      - name: ""
+        url: ""
+
+  fair:
+    reproducible: true            # required -- only true if actually re-verified
+    benchmark_ready: true         # required (deprecated by the schema's own note, kept for corpus consistency)
+
+  ratings:                        # optional, but always fill in from rubric.yaml when one exists
+    software:
+      rating: 0
+      reason: ""
+    specification:
+      rating: 0
+      reason: ""
+    dataset:
+      rating: 0
+      reason: ""
+    metrics:
+      rating: 0
+      reason: ""
+    reference_solution:
+      rating: 0
+      reason: ""
+    documentation:
+      rating: 0
+      reason: ""
