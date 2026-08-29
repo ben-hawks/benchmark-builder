@@ -15,7 +15,9 @@
   valid: true                    # required -- only true if actually verified working
   valid_date: ""                 # required -- date last verified
 
-  name: ""                       # required
+  name: ""                       # required -- becomes the published page's URL slug via upstream's
+                                  # own derivation (not this skill's schema) -- see "How name becomes
+                                  # the entry's published URL" in the reference doc before finalizing
   url: ""                        # required -- see "The url decision" in the reference doc
   doi: ""                        # optional -- omit entirely if none exists, don't fabricate
 
