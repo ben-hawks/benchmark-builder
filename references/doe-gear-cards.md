@@ -40,8 +40,30 @@ landing page's own links rather than guessing a file path:
   services for datasets (OLCF Atlas ARK IDs pre-publication, OSTI DOI Data ID
   Service post-publication), and links out to a data-card-generator tool
   (`github.com/AI-ModCon/BaseData_Skills`) and a tool-card repo
-  (`github.com/AI-ModCon/BaseData_Toolcards`) — worth mentioning to the user
-  if they want automated data-card generation rather than a manual one.
+  (`github.com/AI-ModCon/BaseData_Toolcards`).
+
+**The Dataset/Data Card is a materially different shape from Model/Agent Card
+— confirmed by actually fetching it, not assumed.** Model Card and Agent Card
+are each a single downloadable markdown template you fill in by hand. The
+Data Card is not: the FAIR page's own link goes to a full external skill
+(`AI-ModCon/BaseData_Skills`'s `datacard-generator`) implementing the
+**Genesis Mission Data Card v1.2** schema — a large (100+ KB), multi-section
+template (Discoverability/Accessibility/Interoperability/Reusability/
+Governed Use/AI Usability) with its own directory-introspection script and,
+critically, **mandatory live identifier verification** (ORCID/ROR/DOI/OSTI,
+checked against live APIs) before the tool considers a card valid. Two real
+consequences:
+
+- If that generator skill/tool is actually available in the user's
+  environment, prefer running it properly (introspection + live identifier
+  checks) over hand-filling the schema — a hand-filled card cannot satisfy
+  its own validation step.
+- If it isn't available, a hand-filled Data Card following the v1.2 outline
+  is still worth producing, but **every field that tool would normally
+  verify live (identifiers, author roles, org/facility affiliations, exact
+  dates) must be flagged as unverified rather than guessed** — don't let a
+  hand-filled card imply a rigor it doesn't have. `examples/wa-hls4ml/DATA_CARD.md`
+  in this repo is a worked example of exactly that flagging pattern.
 
 ## How this fits what this skill already builds
 
