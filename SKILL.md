@@ -1,6 +1,6 @@
 ---
 name: benchmark-builder
-description: Walks a user through designing, structuring, documenting, and self-scoring a scientific ML benchmark that conforms to the MLCommons Science Benchmarks Ontology (five-element benchmark definition, six-category/27-point rating rubric, arXiv:2511.05614) and, once built, packaging it as a Codabench competition bundle with a validated example submission. Use whenever the user wants to build, formalize, publish, or clean up a benchmark, dataset+task+metric suite, or reproducibility package -- even if they never say "MLCommons," "ontology," or "Codabench" explicitly. Trigger on requests like "turn my model comparison into a proper benchmark," "structure this repo so others can reproduce our results," "grade how good our benchmark documentation is," or "make this a Codabench competition." Also use it to self-score an EXISTING benchmark, validate an existing Codabench bundle, or generate an MLCommons corpus entry YAML for a benchmark that already exists.
+description: Walks a user through designing, structuring, documenting, and self-scoring a scientific ML benchmark that conforms to the MLCommons Science Benchmarks Ontology (five-element benchmark definition, six-category/27-point rating rubric, arXiv:2511.05614) and, once built, packaging it as a Codabench competition bundle with a validated example submission. Use whenever the user wants to build, formalize, publish, or clean up a benchmark, dataset+task+metric suite, or reproducibility package -- even if they never say "MLCommons," "ontology," or "Codabench" explicitly. Trigger on requests like "turn my model comparison into a proper benchmark," "structure this repo so others can reproduce our results," "grade how good our benchmark documentation is," or "make this a Codabench competition." Also use it to self-score an EXISTING benchmark, validate an existing Codabench bundle, generate an MLCommons corpus entry YAML for a benchmark that already exists, or produce a DOE GEAR Model/Agent/Dataset card for a benchmark's reference solution or dataset.
 ---
 
 # Building an MLCommons-ontology-conformant benchmark
@@ -30,6 +30,12 @@ Once the standalone benchmark and its rubric score exist, also generate an MLCom
 corpus entry (a separate, single-YAML-file deliverable for the real public corpus at
 https://mlcommons-science.github.io/benchmark/) -- see "Generate an MLCommons corpus
 entry" below and read `references/mlcommons-corpus-format.md` in full before touching it.
+
+If the user is working under a DOE/Genesis Mission RFA, or the reference solution is a
+model or agentic system, also offer a DOE GEAR Model/Agent/Dataset card -- a separate,
+optional deliverable from the corpus entry above -- see "Generate DOE GEAR xCards" below
+and read `references/doe-gear-cards.md` in full before touching it; that doc explains why
+its templates must be fetched live rather than reused from a cached description.
 
 If the user wants the benchmark packaged for Codabench (upload-ready, participants can
 submit against it), that's a separate, later phase -- see "Adapt into a Codabench
@@ -256,23 +262,63 @@ documented).
    skill's workflow — synthesize them from what you already know rather than
    leaving them blank, but say plainly that they're a synthesis, not a fact
    pulled from a source.
-2. **Ask about `url` and `contact` rather than assuming.** If this is a
+2. **Pick `name` with its downstream URL in mind.** The published corpus
+   derives each entry's page URL from `name` automatically — there's no
+   separate `id`/`slug` field to set. The exact derivation lives in the
+   upstream repo's own code and can change, so per "How `name` becomes the
+   entry's published URL" in `references/mlcommons-corpus-format.md`, fetch
+   it fresh rather than trusting a paraphrase before finalizing `name`.
+3. **Ask about `url` and `contact` rather than assuming.** If this is a
    formalized existing benchmark (not built from scratch), the reference
    doc's "The url decision" section explains why this is a real, unresolved
    choice between the upstream project and the newly-formalized package --
    ask the user. Similarly, never default to listing the user's own contact
    info without asking first.
-3. **Only set `valid: true` / `fair.reproducible: true` / `fair.benchmark_ready: true`
+4. **Only set `valid: true` / `fair.reproducible: true` / `fair.benchmark_ready: true`
    if actually verified**, the same bar this skill already applies everywhere
    else -- these are booleans per the documented schema (a real cataloged
    entry using strings instead is a known, documented mismatch to not repeat).
-4. **Validate before calling it done**:
+5. **Validate before calling it done**:
    ```bash
    python scripts/validate_corpus_entry.py <entry.yaml>
    ```
    Fix everything it flags as an error; warnings (e.g. the deprecated
    `solutions` field, or `ml_motif` diverging from `task_types`) are judgment
    calls to consider, not blockers.
+6. **If the entry is actually headed upstream as a PR**, fetch and follow the
+   upstream repo's own `CONTRIBUTING.md` and `docs/benchmark-format.md`
+   live rather than relying on any paraphrase of them — see
+   `references/mlcommons-corpus-format.md`'s "If this entry is headed
+   upstream" section for exactly which files and why this is a live
+   dependency, not baked-in fact.
+
+## Generate DOE GEAR xCards (optional)
+
+A separate, optional deliverable from the MLCommons corpus entry above: DOE's
+GEAR platform (Genesis Mission) defines its own short-form Model Card, Agent
+Card, and Dataset/Data Card conventions. Offer these when the reference
+solution is a model or agentic system, or the user is working under a
+DOE/Genesis Mission RFA that expects them. Read `references/doe-gear-cards.md`
+in full first.
+
+1. **Ask which card(s) apply** — Model Card (element D is a trained model),
+   Agent Card (element D, or the benchmark's own task, is an agentic system),
+   and/or Dataset/Data Card (element B) — rather than assuming all three.
+2. **Fetch the current landing page and its linked template/examples live**
+   for each card that applies, per `references/doe-gear-cards.md`'s table —
+   these are DOE-maintained pages this skill has no schema for and no way to
+   keep in sync, so never draft a card from memory of a prior fetch in this
+   same conversation if meaningful time has passed, and never from this
+   skill's own paraphrase of what the template contains.
+3. **Map from what this skill already built**, per "How this fits what this
+   skill already built" in the reference doc — element D for Model/Agent
+   Card, element B for Dataset/Data Card — rather than re-running the
+   interview. Match the live template's actual section headers; don't impose
+   a structure of your own.
+4. **Save each as its own file** (e.g. `MODEL_CARD.md`, `AGENT_CARD.md`,
+   `DATA_CARD.md`) alongside the benchmark card, and mention the
+   data-card-generator/tool-card tooling the FAIR page links to if the user
+   wants automated generation instead.
 
 ## Adapt into a Codabench Competition Bundle
 

@@ -7,6 +7,10 @@ corpus at https://mlcommons-science.github.io/benchmark/ that
 directly, not inferred from the one example the ontology paper's own appendix
 shows — that example (Jet Classification) is reproduced in-line below wherever
 it clarifies a field's intent better than the schema file's own comment does.
+Also fetched directly: `CONTRIBUTING.md`, `docs/benchmark-format.md`, and the
+`id`-generation code in `bin/yaml_manager.py`/`bin/mkdocs_writer.py` — these
+back the "How `name` becomes the entry's published URL" and "If this entry is
+headed upstream" sections below.
 
 This is a **separate deliverable** from everything else this skill produces:
 a single flat YAML entry meant to be appended to (or merged into) MLCommons'
@@ -60,6 +64,34 @@ skip it).
 | `fair.reproducible` | required, bool | — | `true` only if actually re-run and verified, matching this skill's own reproducibility bar |
 | `fair.benchmark_ready` | required, bool | Schema calls this deprecated ("true implies runnable") but still shown in the one real example | Include anyway for consistency with the corpus as it actually exists; set `true` under the same condition as `reproducible` |
 | `ratings` | optional | Six sub-categories, each `{rating, reason}` | **Direct 1:1 mapping from `rubric.yaml`** — see "Ratings mapping" below |
+
+### How `name` becomes the entry's published URL — check this live, don't trust a cached copy
+
+The corpus entry has no `id`/`slug` field to fill in yourself: the publishing
+pipeline derives one from `name` when it loads the catalogue, and that
+derived `id` is what the published site uses as the page path
+(`https://mlcommons-science.github.io/benchmark/<id>/`). The exact
+derivation is real upstream code, not part of this skill's own schema, so
+**fetch and read it fresh each time `name` needs to be finalized for a real
+corpus entry** rather than relying on a description written into this file —
+it can change without this skill knowing:
+
+- `bin/yaml_manager.py` — the `clean_string`/`id`-assignment logic that turns
+  `name` into the slug.
+- `bin/mkdocs_writer.py` — confirms the `id` is used verbatim as the output
+  filename/URL path.
+
+As of the last time this was checked, the transform lowercases `name`,
+replaces spaces with underscores, and strips everything that isn't a letter,
+hyphen, or underscore (digits included) — which means a version number or
+year in `name` can silently vanish from the slug, and two names that collapse
+to the same `id` is a real error condition upstream, not just a lint warning.
+Treat that as a reason to re-check the live source before finalizing `name`,
+not as a fact to take on faith from this paragraph.
+
+This only matters when the entry is headed for the real upstream corpus (see
+"If this entry is headed upstream" below); it doesn't change anything about
+this skill's own output beyond picking `name` thoughtfully.
 
 ### The `url` decision
 
@@ -127,6 +159,37 @@ Found by actually reading the schema file, not assumed:
    contradicts it — but don't be surprised if a generated entry looks stricter
    than some existing corpus entries when compared side by side. That's the
    entry being more correct, not a bug in this skill's output.
+
+## If this entry is headed upstream: read the live repo conventions, don't rely on a snapshot
+
+Everything above produces a correct entry per the schema. If the user actually
+intends to submit it as a PR to `mlcommons-science/benchmark` (not just keep
+it as this skill's own deliverable), there are real contribution conventions
+this skill's schema table doesn't cover — indentation/quoting style, the
+placeholder convention for unknown fields, which of two catalogue files to
+target, required validation commands, and PR conventions. These live in the
+upstream repo itself and are this skill's actual dependency, not something to
+keep a paraphrased copy of here (a copy goes stale the moment the maintainers
+edit their own docs). Before finalizing a file meant for a real PR, fetch and
+follow, in full, whatever is currently written in:
+
+- `CONTRIBUTING.md` — the workflow: fork/branch, which of
+  `source/benchmarks.yaml` (main catalogue) vs `source/benchmarks-addon.yaml`
+  (supplemental) to target, the required `make check` (and optional
+  `make check_url`) before opening a PR, and PR title/description
+  conventions.
+- `docs/benchmark-format.md` — authoring rules layered on top of the schema
+  itself: indentation and quoting style, booleans, multiline-text style, and
+  the placeholder convention for a field that's genuinely unknown (this
+  skill's own bar is stricter — ask the user, don't fabricate — but once
+  something really can't be determined, match whatever that doc currently
+  says to write instead of leaving `assets/mlcommons_corpus_entry_template.yaml`'s
+  blank `""` placeholder in place).
+
+Don't skip this fetch because the schema-conformant entry already validates
+against `scripts/validate_corpus_entry.py` — that script checks this skill's
+own schema understanding, not the upstream repo's separate authoring/PR
+conventions, and the two can diverge.
 
 ## Validate before calling it done
 
