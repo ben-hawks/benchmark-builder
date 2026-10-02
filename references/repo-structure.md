@@ -25,6 +25,21 @@ expensive than it's worth, deviate. Keep the **pipeline contract** below even th
 that's the part that makes results comparable. Record the deviation in the README so a
 reader isn't surprised.
 
+**Generic structure, benchmark-specific content.** The layout, the pipeline contract and
+the conventions below apply to every benchmark. What goes *inside* the files doesn't, and
+must be decided per benchmark while running the skill:
+- data formats and how to read them;
+- how missing ground truth is handled;
+- the output format and metrics;
+- preprocessing, caching and post-processing;
+- software stacks and the workarounds they need;
+- tolerances and resource sizes.
+
+axess-benchmark's answers appear in this file only as labelled examples ("axess: ...").
+When a benchmark needs a fix or a workaround, put it in that benchmark's own code and
+document it in its `docs/VALIDATION.md` or `docs/<MACHINE>.md`, with the evidence for it.
+Never fold it back into the skill's templates as a default.
+
 ## Canonical layout
 
 `<pkg>` is the benchmark's Python package (axess: `wa_hls4ml_bench`). `<hpc>` is one
@@ -39,7 +54,7 @@ marked *(optional)* depend on the benchmark (see "When the optional pieces apply
 ├── LICENSE                    code license (distinct from the dataset license; README states both)
 ├── rubric.yaml, SCORE_REPORT.md   self-score + scorer output, kept current
 ├── pyproject.toml             installable package; extras per model family
-├── requirements*.txt          one per environment that must stay separate (e.g. torch vs TF)
+├── requirements*.txt          one per environment that must stay separate (only if stacks conflict)
 ├── .gitattributes             `* text=auto eol=lf` plus binary types
 ├── data/SCHEMA.md             per-field schema: which field is ground truth, which fields are NOT valid inputs
 ├── docs/
@@ -51,16 +66,16 @@ marked *(optional)* depend on the benchmark (see "When the optional pieces apply
 │   └── <split>/<model>/{METRICS.md, metrics.json, <plot>.png}
 ├── weights/
 │   ├── MANIFEST.json          per file: URL, sha256, bytes, provenance
-│   └── <stats>.json           (optional) small artifacts the weights need (normalization stats, caps)
+│   └── <artifacts>            (optional) small files the weights need but don't contain
 ├── src/<pkg>/
-│   ├── data.py                load the dataset (streaming), sample_id rule, ground-truth extraction
-│   ├── cache.py               featurize once into a compact cache; multiprocessing
+│   ├── data.py                load the dataset, sample_id rule, output columns, ground-truth extraction
+│   ├── cache.py               (optional) preprocess once into a cache, when preprocessing is expensive
 │   ├── features.py            (optional) vendored upstream preprocessing, kept bit-identical
 │   ├── stats.py               (optional) one-time rebuild of preprocessing artifacts (provenance only)
 │   ├── models/<model>.py      vendored or wrapped model definitions + loaders
 │   ├── train.py               (optional) only when the benchmark includes training
-│   ├── predict.py             CLI: model × split → predictions CSV (all samples)
-│   ├── truth.py               CLI: split → truth CSV (scored samples only)
+│   ├── predict.py             CLI: model × split → predictions file (all samples)
+│   ├── truth.py               CLI: split → truth file (scored samples only); the single truth function
 │   ├── score.py               CLI: metrics overall + per group → METRICS.md, metrics.json, plots
 │   ├── report.py              all metrics.json → LEADERBOARD.md (auxiliary models marked)
 │   └── submission.py          predictions → upload-ready Codabench zip per model
@@ -68,17 +83,17 @@ marked *(optional)* depend on the benchmark (see "When the optional pieces apply
 │   ├── fetch_data.py          download + record the exact dataset revision
 │   ├── fetch_weights.py       download + verify sha256 from weights/MANIFEST.json
 │   └── score_all.sh           truth → score every predictions_*.csv → leaderboard → submission zips
-├── <hpc>/                     (optional) env.sh, setup.sh, submit.sh, jobs/*.sbatch, tuned per machine
+├── <hpc>/                     (optional) env.sh, stack.sh, setup.sh, submit.sh, jobs/*.sbatch, profiles/
 ├── codabench/                 (optional)
 │   ├── README.md              mode, phases, ranking, validation record, pre-upload checklist
 │   ├── build_bundle.py        bundle_src + generated truth/solution/ids → build/competition_bundle.zip
 │   └── bundle_src/            competition.yaml, logo.png, pages/, scoring_program/ (vendored metrics), starting_kit/
 └── tests/
-    ├── test_score.py          metric edge cases (ε, zero variance, NaN rejection)
-    ├── test_pipeline.py       golden predictions on real fixture samples (CPU; <PREFIX>_TEST_DEVICE=cuda on GPU)
+    ├── test_score.py          edge cases of this benchmark's metrics
+    ├── test_pipeline.py       golden predictions on real fixture samples (CPU, and each accelerator via <P>_TEST_DEVICE)
     ├── test_features_equivalence.py   (optional) bit-equivalence vs upstream preprocessing
     ├── test_submission.py     packaging + refusal of incomplete predictions
-    └── fixtures/              a few dozen real samples per split/subset + golden_*.csv
+    └── fixtures/              a few dozen real samples per split/subset + golden files
 ```
 
 The old layout this replaces (`reference_solution/` holding code, a standalone
@@ -88,29 +103,41 @@ The old layout this replaces (`reference_solution/` holding code, a standalone
   share, such as data loading, featurization and scoring.
 - A standalone scorer couldn't do truth extraction, per-group breakdowns, a leaderboard
   and submission packaging off the same loader and sample IDs.
-- One environment file can't hold reference models with conflicting stacks, such as a
-  TensorFlow baseline next to a site PyTorch module.
+- One environment file can't hold reference models with conflicting stacks (axess: a
+  TensorFlow baseline next to a site PyTorch module).
 
 ## The pipeline contract
 
-Every benchmark's run is the same steps, with the same file conventions:
+Every benchmark's run is the same steps, with the same file conventions. Steps in
+brackets exist only when the benchmark needs them:
 
 ```
-fetch_data → cache (featurize) → [train (optional)] → predict (per model, per split) → score_all.sh
-                                                         ↑                              (truth, score, leaderboard, submissions)
-                                       fetch_weights (sha256-checked), or weights from train
+fetch_data → [cache] → [train] → predict (per model, per split) → score_all.sh
+                                    ↑                              (truth, score, leaderboard, submissions)
+              [fetch_weights (sha256-checked)] or weights from train
 ```
+
+Add a `cache` step only when preprocessing is expensive enough to do once; its format is
+the benchmark's choice. Every CLI takes `--split` plus a data or cache directory, so the
+storage format stays inside the package.
 
 | File | Written by | Contents |
 |---|---|---|
-| `<results>/<split>/predictions_<model>.csv` | `predict` (or a participant) | `sample_id` + one column per target, **every** sample of the split |
-| `<results>/<split>/truth.csv` | `truth` | `sample_id` + grouping column(s) + targets, **scored samples only** |
+| `<results>/<split>/predictions_<model>.<ext>` | `predict` (or a participant) | the model's outputs for **every** sample of the split, keyed by `sample_id` |
+| `<results>/<split>/truth.<ext>` | `truth` | the ground truth for the **scored samples only**, plus any grouping column(s) |
 | `<results>/<split>/<model>/metrics.json`, `METRICS.md`, plots | `score` | metrics overall and per group, plus a coverage block |
 | `<results>/LEADERBOARD.md` | `report` | one table per split, every model, auxiliary rows marked |
 | `<results>/codabench/<model>_submission.zip` | `submission` | upload-ready Codabench results submission |
 
-A participant's model plugs in by writing `predictions_<name>.csv` for each split and
-re-running `score_all.sh`; nothing else changes. Say exactly this in the README and in
+For a per-sample task (regression, classification, detection, ...), the default
+prediction file is a CSV with `sample_id` plus one column per output (`data.OUTPUT_COLUMNS`);
+the snippets assume this. Tasks whose outputs aren't per-sample (generated samples, a
+control policy, a ranking) define their own prediction artifact. They keep the same rules:
+one file or directory per model and split, everything a scorer needs, and nothing
+hand-edited.
+
+A participant's model plugs in by writing its predictions for each split and re-running
+`score_all.sh`; nothing else changes. Say exactly this in the README and in
 `SUBMISSION.md`.
 
 Paths come from environment variables with a benchmark-specific prefix (axess: `WA_`; the
@@ -129,18 +156,18 @@ snippets use `BENCH_`, so rename them): `<P>_DATA`, `<P>_CACHE`, `<P>_WEIGHTS`,
   - a **Known limitations** section;
   - both licenses (code and dataset) stated separately.
 - **SUBMISSION.md**: from `assets/submission_report_template.md`. Tell participants to
-  write `predictions_<name>.csv` and run `score_all.sh`, which also produces the
+  write their predictions file(s) and run `score_all.sh`, which also produces the
   Codabench zip.
 - **CITATION.cff**: shape in `assets/repo/CITATION.cff`, rules in "Citations" below.
 - **rubric.yaml / SCORE_REPORT.md**: from `assets/rubric_template.yaml`. Keep its `notes:`
   block dated and current (see SKILL.md § Iterate).
-- **pyproject.toml**: an installable package (`src/` layout) with core deps (numpy,
-  pandas, plotting, streaming JSON parser) and **extras per model family** (`torch`,
-  `mlp`, `fetch`, `test`). A user installs only what the models they run need.
-- **requirements*.txt**: one per environment that has to stay separate. axess has
-  `requirements.txt` (torch stack on a site PyTorch module) and `requirements-mlp.txt`
-  (TensorFlow plus rule4ml, which drags in its own torch). Pin versions the reference
-  run used.
+- **pyproject.toml**: an installable package (`src/` layout) with the core dependencies
+  scoring needs, and **optional extras per model family**, so a user installs only what
+  the models they run need (axess: `torch`, `mlp`, `fetch`, `test`).
+- **requirements*.txt**: one per environment that has to stay separate, and only as many
+  as the reference models' stacks actually require. Pin the versions the reference run
+  used. (axess needed two: a PyTorch stack, and TensorFlow plus rule4ml, which brings its
+  own torch.)
 - **.gitattributes**: `assets/repo/.gitattributes`. Shell and sbatch files authored on
   Windows otherwise check out with CRLF and fail on the cluster with `$'\r': command not
   found`.
@@ -153,26 +180,26 @@ Every field of a sample, with its type and meaning. State explicitly:
 - which fields are **not valid model inputs**, because they're labels or are derived from
   them. axess's dataset carries `hls_resource_report` next to the ground truth
   `resource_report`, and a model fed one to predict the other would be cheating;
-- the `sample_id` rule and its fallbacks (axess: `meta_data.uuid`, but the `2_20` subset
-  only has `meta_data.model_id`). The rule must be unique per split, and `cache.py`
+- the `sample_id` rule and any fallbacks (axess: `meta_data.uuid`, but the `2_20` subset
+  only has `meta_data.model_id`). The rule must be unique per split, and the loader
   enforces it;
-- how missing ground truth is represented and that such samples are excluded from scoring.
+- how missing or invalid ground truth is represented, and what the benchmark does with
+  those samples (see `data.py` below).
 
 ### docs/VALIDATION.md
 
 How the reference solutions were verified, with actual numbers, dates, hardware and
 software versions. This is what turns "we ran it" into evidence. Sections, as applicable:
 
-1. Preprocessing equivalence with upstream (bit-identical test, sample count).
-2. Rebuilt preprocessing artifacts (stats, caps) vs the shipped originals, with max
-   relative difference.
-3. Per-sample agreement with upstream predictions when those exist, e.g. "max
-   |ours − theirs| / (|theirs| + 1) = 2.8e-4 over 92,933 samples".
+1. Preprocessing equivalence with upstream, if preprocessing is vendored.
+2. Rebuilt derived artifacts vs the shipped originals, if any were rebuilt.
+3. Per-sample agreement with upstream predictions when those exist (axess: "max
+   |ours − theirs| / (|theirs| + 1) = 2.8e-4 over 92,933 samples").
 4. Reproduction of published table cells, and which metric variant reproduces them
    (SKILL.md element C).
 5. The training-label audit: which label each reference model was trained on, proven
    on data (SKILL.md element D).
-6. Feature-extraction gaps found and how they're handled.
+6. Gaps found in the data or preprocessing, and how this benchmark handles them.
 7. Runs on each target machine: job IDs, exit codes, and agreement with
    `reference_results/`.
 
@@ -190,7 +217,8 @@ with an extra column for each **auxiliary** model. Rows:
 - input representation and architecture;
 - **training labels** (which field or definition);
 - training recipe (upstream), with epochs/early stopping as reported;
-- output post-processing (inverse transform, clamps, caps);
+- output post-processing, if any (e.g. inverse transforms, clamps; axess: a cap at the
+  training maximum);
 - parameter count, inference hardware and measured cost.
 
 Then a prose section on the preprocessing the models depend on, and why each auxiliary
@@ -209,62 +237,64 @@ and re-commit when anything that changes numbers changes.
   `url`, `sha256`, `bytes`, and a `model` or provenance string naming the architecture
   class, the training labels and the source commit or release. Only **reference** and
   **auxiliary** weights the benchmark actually runs go in it. Mark which is which.
-- **Small derived artifacts** (normalization stats, prediction caps, vocabularies) that
-  the checkpoints need but don't contain go here as versioned files.
+- **Small derived artifacts** the checkpoints need but don't contain (e.g. normalization
+  statistics, vocabularies, thresholds) go here as versioned files, if there are any.
   `scripts/fetch_weights.py` copies them next to the downloaded checkpoints.
 
 ### src/<pkg>/
 
-- **data.py**: dataset loading, the split list, the target column order (`TARGETS`, used
-  by every CSV), `sample_id()`, the grouping used for per-group metrics, and one
-  ground-truth function per truth definition. Defaults:
-  - **Stream large files.** For JSON arrays use `ijson.items(f, "item", use_float=True)`,
-    which yields the same types as `json.load`. axess has a 1.9 GB file that didn't fit
-    in the workstation's free memory.
-  - **Missing ground truth → excluded, never imputed.** Return `None`/NaN, and report
-    coverage (n_truth, n_scored, n_truth_without_prediction,
-    n_predictions_without_truth) everywhere metrics are reported.
-  - **The training-label filter isn't the scoring filter.** Anything that reproduces
-    training, such as rebuilding normalization stats, must use the upstream converter's
-    exact filter. Scoring uses the benchmark's own. In axess the converter kept samples
-    whose latency report was missing (latency read as 0), giving 433,676 train samples vs
-    the benchmark filter's 433,674, which changes the stats. Keep both as separate
-    functions.
-- **cache.py**: featurize each split once into a compact cache (axess: ragged per-layer
-  features + offsets + all truth arrays in one `.npz`).
-  - Use `multiprocessing.Pool.imap` with a chunksize, which keeps order.
-  - Assert `sample_id` uniqueness when building.
-  - Make the reader **tolerant of older cache formats**: a column added later
-    (`truth_train`) broke loading caches from an earlier cluster run. Treat new arrays as
-    optional on read (`z["x"] if "x" in z.files else None`).
+- **data.py**: dataset loading, the split list, the output columns
+  (`OUTPUT_COLUMNS`, used by every prediction and truth file), `sample_id()`, the grouping
+  used for per-group metrics, and one ground-truth function per truth definition.
+  Decide each of these per benchmark, from its data:
+  - **How to read the data.** Use whatever the format and size require. If files don't fit
+    in memory, stream them (axess streams 1.9 GB JSON arrays with `ijson`).
+  - **Missing or invalid ground truth.** Decide with the user whether such samples are
+    excluded, imputed, or scored as failures, and document the choice in `data/SCHEMA.md`.
+    (axess excludes them.) Whatever the choice, report coverage (n_truth, n_scored,
+    n_truth_without_prediction, n_predictions_without_truth) everywhere metrics are
+    reported.
+  - **Training filter vs scoring filter.** If anything reproduces upstream training (e.g.
+    rebuilding normalization statistics), check whether upstream selected training
+    samples differently from the benchmark's scoring filter. If it did, keep both as
+    separate functions. (axess: the upstream converter kept samples with a missing latency
+    report, 433,676 vs 433,674, which changes the statistics.)
+- **cache.py** *(optional)*: only when preprocessing is expensive enough to do once.
+  The format and the parallelism are the benchmark's choice (axess: one `.npz` per split,
+  built with `multiprocessing.Pool.imap`). Two rules apply whatever the format:
+  - assert `sample_id` uniqueness when building;
+  - make the reader tolerant of caches written by earlier versions of the code, so a
+    rerun doesn't fail on old files (axess: a column added later broke loading earlier
+    caches).
 - **features.py** *(optional)*: when a reference model depends on upstream preprocessing,
   vendor it **verbatim**, including its quirks, with a header naming the upstream file
-  and commit. Any fix (axess fills NaN precision for one exemplar architecture from the
-  global config) must be a separate, switchable step, so the equivalence test can check
-  the unmodified path.
-- **stats.py** *(optional)*: rebuilds shipped preprocessing artifacts from the training
-  split, for provenance only. The pipeline reads the shipped file.
-- **models/<model>.py**: vendored model class (load the checkpoint with `strict=True`) or
-  a thin wrapper around a pip-installed package. Include the post-processing that's part
-  of the published inference procedure: inverse transform, clamps, caps.
+  and commit. Any fix this benchmark needs (axess: a fallback for one exemplar
+  architecture's missing precision values) must be a separate, switchable step, so the
+  equivalence test can check the unmodified path.
+- **stats.py** *(optional)*: rebuilds shipped derived artifacts from the training split,
+  for provenance only. The pipeline reads the shipped file.
+- **models/<model>.py**: vendored model class, loaded with the framework's strict
+  weight matching so a wrong architecture fails loudly (e.g. PyTorch `strict=True`), or a
+  thin wrapper around a pip-installed package. Include any post-processing that's part of
+  the published inference procedure.
 - **train.py** *(optional)*: see "Score-only vs includes training".
-- **predict.py**: `--model M --split S` (or `--cache`) `--out predictions_M.csv`, plus
-  `--device`. Writes a row for **every** sample. A sample the model can't handle gets NaN
-  and is counted, not silently dropped.
-- **truth.py**: writes the truth CSV for scored samples only. Its `truth_frame()` is the
-  **single truth function** that `score`, `submission` and `codabench/build_bundle.py`
-  all import, so they can't diverge.
-- **score.py**: metrics per target, overall and per group, plus coverage, written to
-  `metrics.json` and `METRICS.md` and plotted. Reject NaN/inf predictions for scored
-  samples rather than skipping them. Adapt the metric functions from `scripts/metrics.py`
-  only when they fit the motif (SKILL.md element C).
+- **predict.py**: `--model M --split S` (plus a data or cache directory)
+  `--out predictions_M.<ext>`, plus `--device`. Writes a prediction for **every** sample.
+  A sample the model can't handle is marked missing and counted, not silently dropped.
+- **truth.py**: writes the truth file for scored samples only. Its `truth_frame(cache_dir,
+  split)` and `scored_ids(cache_dir, split)` are the **single truth function** that
+  `score`, `submission` and `codabench/build_bundle.py` all import, so they can't diverge.
+- **score.py**: this benchmark's metrics, overall and per group, plus coverage, written to
+  `metrics.json` and `METRICS.md`, with plots if the benchmark defines any. Reject invalid
+  predictions for scored samples rather than skipping them. Reuse functions from
+  `scripts/metrics.py` only when they fit the motif (SKILL.md element C).
 - **report.py**: collects every `metrics.json` into `LEADERBOARD.md`. Has an
   `AUXILIARY = {...}` set whose rows render in italics with "(auxiliary)". Adapt
   `assets/repo/report.py`.
 - **submission.py**: packages each model's predictions as an upload-ready Codabench zip,
   with exactly the scored samples, at the zip root, applying the same checks as the
-  scoring program. Refuses (exit 1, no zip) on incomplete or non-finite predictions.
-  Adapt `assets/repo/submission.py`.
+  scoring program. Refuses (exit 1, no zip) on incomplete or invalid predictions; what
+  counts as invalid depends on the task. Adapt `assets/repo/submission.py`.
 
 ### scripts/
 
@@ -280,26 +310,30 @@ and re-commit when anything that changes numbers changes.
 
 ### <hpc>/ *(optional)*
 
-Generated from `assets/hpc/slurm/` and tuned per machine. See `references/hpc.md`.
+Generated from `assets/hpc/slurm/`: a machine profile per cluster, plus `stack.sh` for
+the benchmark's own software-stack settings and fixes. See `references/hpc.md`.
 
 ### codabench/ *(optional)*
 
 `bundle_src/` (hand-written, versioned) plus `build_bundle.py`, which generates the
-hidden truth, scored-ID lists, `solution/`, `sample_submission.zip` and a weak-baseline
-zip from the **same truth function** as the benchmark. `build/` is git-ignored. See
+hidden truth, scored-ID lists, `solution/`, `sample_submission.zip`, and a weak-baseline
+zip chosen for the task, all from the **same truth function** as the benchmark. `build/` is git-ignored. See
 `references/codabench.md` § "Building the bundle from the benchmark".
 
 ### tests/
 
-- **test_score.py**: metric edge cases (ε handling at all-zero, zero-variance R² → NaN,
-  sign convention of any signed error, NaN predictions rejected, coverage counts, group
-  assignment).
+- **test_score.py**: edge cases of this benchmark's own metrics, plus coverage counts,
+  group assignment, and rejection of invalid predictions. (axess: SMAPE's ε at all-zero,
+  R² → NaN at zero variance, the sign convention of a signed error.)
 - **test_pipeline.py**: the **golden-output test** (pattern in
   `assets/repo/tests/test_pipeline.py`):
-  - featurize the fixture samples, run each reference model, and compare against
-    `fixtures/golden_<split>_<model>.csv` recorded from the validated run;
+  - preprocess the fixture samples if the benchmark has a cache step, run each reference
+    model, and compare against golden outputs recorded from the validated run;
+  - use tolerances measured for this benchmark across the hardware it runs on, not
+    copied from another benchmark;
   - skips cleanly when the weights aren't present;
-  - `<P>_TEST_DEVICE=cuda` runs it on a GPU and also checks GPU vs CPU agreement.
+  - `<P>_TEST_DEVICE=<device>` runs it on an accelerator, which also checks
+    accelerator vs CPU agreement.
 
   Run it on every new machine **before** submitting jobs. It's the portable form of the
   per-sample verification in docs/VALIDATION.md.
@@ -308,20 +342,22 @@ zip from the **same truth function** as the benchmark. `build/` is git-ignored. 
   otherwise.
 - **test_submission.py**: the zip has exactly the scored IDs in order, and incomplete
   predictions produce no zip and a non-zero exit.
-- **fixtures/**: a few dozen **real** samples per split and per subset, including edge
-  cases (missing ground truth, the subset with the ID fallback, every exemplar group),
-  plus the golden CSVs.
+- **fixtures/**: a few dozen **real** samples per split and per subset, covering the edge
+  cases this benchmark actually has (axess: samples without ground truth, the subset with
+  the ID fallback, every exemplar group), plus the golden files.
 
 ## When the optional pieces apply
 
 | Piece | Include when |
 |---|---|
 | `features.py` + `test_features_equivalence.py` | a reference model depends on upstream preprocessing you vendor |
-| `stats.py`, `weights/<stats>.json` | checkpoints need normalization stats/caps that aren't stored in them |
+| `cache.py` + a featurize job | preprocessing is expensive enough to do once |
+| `stats.py`, `weights/<artifacts>` | checkpoints need derived artifacts that aren't stored in them |
 | `train.py` + training jobs | the benchmark evaluates or reproduces training (next section) |
 | `<hpc>/`, `docs/<MACHINE>.md` | the full run needs a cluster, or the user names target machines |
 | `codabench/` | the user wants a Codabench competition |
 | multiple `requirements*.txt` | reference models need conflicting stacks |
+| `<hpc>/stack.sh` hooks | the benchmark's stack needs environment settings or fixes on a machine (documented in `docs/<MACHINE>.md`) |
 | auxiliary column/rows | comparison models that aren't reference solutions are run |
 
 ## Score-only vs includes training
@@ -335,9 +371,10 @@ Ask; don't assume (SKILL.md element D). The answer shapes the repo:
   - training code is linked upstream for provenance;
   - the rubric's "code complete" evidence says the benchmark is score-only by design.
 - **Includes training**:
-  - generate `src/<pkg>/train.py`, with the same `--split`/`--cache` conventions, writing
+  - generate `src/<pkg>/train.py`, with the same `--split`/directory conventions, writing
     checkpoints plus their derived artifacts to `<P>_WEIGHTS`;
-  - add training Slurm jobs, which are GPU-heavy and possibly multi-node;
+  - add training Slurm jobs, sized from this benchmark's training cost (possibly
+    multi-node);
   - add a seed policy;
   - add a training validation section to docs/VALIDATION.md: does retraining reproduce
     the reference numbers within a stated tolerance, over how many seeds?

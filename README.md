@@ -66,7 +66,8 @@ assets/
   rubric_template.yaml, benchmark_card_template.md, submission_report_template.md
   repo/                        snippets to adapt: score_all.sh, submission.py, report.py, fetch_weights.py,
                                MANIFEST.json, golden test, CITATION.cff, .gitattributes
-  hpc/slurm/                   env.sh, setup.sh, submit.sh, jobs/*.sbatch, profiles/{perlmutter,generic}.sh
+  hpc/slurm/                   env.sh, stack.sh (benchmark stack hooks), setup.sh, submit.sh, jobs/*.sbatch,
+                               profiles/{perlmutter,generic}.sh (machine facts)
   codabench/
     Dockerfile.template, Dockerfile.gpu.template
     build_bundle.py            template: bundle from the benchmark's own truth function

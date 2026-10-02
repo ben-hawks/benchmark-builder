@@ -5,17 +5,21 @@
 For every model with predictions for all SPLITS (``<results>/<split>/predictions_<model>.csv``),
 writes ``<results>/codabench/<model>_submission.zip`` holding ``predictions_<split>.csv`` for
 each split at the zip root. Each file has exactly the scored samples (the same set as the
-Codabench bundle's hidden truth, because both come from truth.truth_frame) and the columns
-sample_id + data.TARGETS.
+Codabench bundle's hidden truth, because both come from the benchmark's single truth
+function) and the columns ID_COLUMN + OUTPUT_COLUMNS.
 
-It applies the same checks as the Codabench scoring program (a finite prediction for every
-scored sample, no duplicate ids, all columns present), so a zip written here is ready to
-upload, and an incomplete model gets no zip and a non-zero exit. scripts/score_all.sh runs
-this after scoring.
+It applies the same checks as the Codabench scoring program, so a zip written here is
+ready to upload, and an incomplete model gets no zip and a non-zero exit.
+scripts/score_all.sh runs this after scoring.
 
-ADAPT (assets/repo/submission.py in the benchmark-builder skill): rename benchpkg, set
-SPLITS to the splits a submission must cover, and point scored_ids() at this benchmark's
-cache reader and truth function. Keep the checks and the flat zip layout.
+ADAPT (assets/repo/submission.py in the benchmark-builder skill):
+  - rename benchpkg; set SPLITS to the splits a submission must cover;
+  - point scored_ids() at this benchmark's truth function;
+  - make check_values() enforce what a valid output is for THIS task (finite numbers for
+    regression, a label from the class set for classification, ...);
+  - this shape assumes one prediction row per sample. A task whose output isn't per-sample
+    (generated samples, a policy, a ranking) needs its own packaging, with the same
+    flat-zip and refuse-if-incomplete rules.
 """
 
 from __future__ import annotations
@@ -31,21 +35,27 @@ import numpy as np
 import pandas as pd
 
 from . import data as D
-from .cache import SplitCache
-from .truth import truth_frame
+from .truth import scored_ids  # the benchmark's single truth function (ids of scored samples)
 
-SPLITS = ("test",)  # every split a Codabench submission must contain
-COLUMNS = ["sample_id"] + D.TARGETS
+SPLITS = ("test",)                      # every split a Codabench submission must contain
+ID_COLUMN = "sample_id"
+OUTPUT_COLUMNS = list(D.OUTPUT_COLUMNS)  # what a prediction file must contain besides the id
+COLUMNS = [ID_COLUMN] + OUTPUT_COLUMNS
 
 
 class SubmissionError(ValueError):
     pass
 
 
-def scored_ids(cache_dir: str, split: str) -> pd.Series:
-    """The scored sample ids of a split, from the single truth function."""
-    cache = SplitCache(os.path.join(cache_dir, f"{split}.npz"))
-    return truth_frame(cache)["sample_id"]
+def check_values(out: pd.DataFrame, label: str) -> None:
+    """Reject invalid predictions for scored samples. Default: numeric and finite.
+    ADAPT for the task's output type."""
+    try:
+        values = out.to_numpy(dtype=float)
+    except ValueError:
+        raise SubmissionError(f"{label}: non-numeric predictions") from None
+    if not np.isfinite(values).all():
+        raise SubmissionError(f"{label}: NaN/inf predictions for scored samples")
 
 
 def select_scored(pred: pd.DataFrame, ids: pd.Series, label: str) -> pd.DataFrame:
@@ -53,16 +63,15 @@ def select_scored(pred: pd.DataFrame, ids: pd.Series, label: str) -> pd.DataFram
     missing_cols = [c for c in COLUMNS if c not in pred.columns]
     if missing_cols:
         raise SubmissionError(f"{label}: missing columns {missing_cols}")
-    if pred["sample_id"].duplicated().any():
-        raise SubmissionError(f"{label}: duplicate sample_id values")
-    pred = pred.set_index("sample_id")
+    if pred[ID_COLUMN].duplicated().any():
+        raise SubmissionError(f"{label}: duplicate {ID_COLUMN} values")
+    pred = pred.set_index(ID_COLUMN)
     missing = ids[~ids.isin(pred.index)]
     if len(missing):
         raise SubmissionError(f"{label}: no prediction for {len(missing)} of {len(ids)} scored samples "
                               f"(e.g. {list(missing[:3])})")
-    out = pred.loc[ids.to_numpy(), D.TARGETS]
-    if not np.isfinite(out.to_numpy(dtype=float)).all():
-        raise SubmissionError(f"{label}: NaN/inf predictions for scored samples")
+    out = pred.loc[ids.to_numpy(), OUTPUT_COLUMNS]
+    check_values(out, label)
     return out.reset_index()[COLUMNS]
 
 
@@ -93,7 +102,7 @@ def models_with_predictions(results: str) -> list[str]:
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--results", required=True, help="results dir with <split>/predictions_<model>.csv")
-    p.add_argument("--cache-dir", required=True, help="dir with <split>.npz")
+    p.add_argument("--cache-dir", required=True, help="where the truth function reads ground truth from")
     p.add_argument("--models", nargs="+", help="default: every model with predictions for all splits")
     p.add_argument("--out", help="default: <results>/codabench")
     args = p.parse_args(argv)
@@ -106,7 +115,7 @@ def main(argv=None):
             frames = {}
             for split in SPLITS:
                 path = os.path.join(args.results, split, f"predictions_{model}.csv")
-                pred = pd.read_csv(path, dtype={"sample_id": str})
+                pred = pd.read_csv(path, dtype={ID_COLUMN: str})
                 frames[split] = select_scored(pred, ids[split], f"{model}/{split}")
         except (SubmissionError, FileNotFoundError) as e:
             print(f"{model}: NOT packaged: {e}", file=sys.stderr)

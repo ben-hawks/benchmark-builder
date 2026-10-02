@@ -5,32 +5,35 @@
 #     BENCH_MACHINE=<machine> bash <hpc>/setup.sh            # everything
 #     BENCH_MACHINE=<machine> bash <hpc>/setup.sh envs       # just the venvs
 #     ... data | weights
-# ADAPT: requirements file names; drop step_envs' second venv if there's one stack.
+# ADAPT: requirements file names; drop the alt venv if the benchmark has one stack, and
+# the weights step if it has no pretrained weights.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 mkdir -p "$BENCH_ROOT"
 
+make_venv() {  # make_venv <main|alt> <venv path> <requirements file> [extra pip args]
+    local kind="$1" venv="$2" req="$3"; shift 3
+    if [ "${BENCH_VENV_SYSTEM_SITE:-0}" = 1 ] && [ "$kind" = main ]; then
+        "$BENCH_PYTHON" -m venv --system-site-packages "$venv"   # reuse packages the site module provides
+    else
+        "$BENCH_PYTHON" -m venv "$venv"
+    fi
+    "$venv/bin/pip" install --upgrade pip
+    "$venv/bin/pip" install -r "$req" "$@"
+    bench_post_install "$kind" "$venv"
+    bench_check_env "$kind" "$venv"
+}
+
 step_envs() {
     echo "== main venv ($BENCH_VENV) on $BENCH_MACHINE"
-    bench_load_torch_stack
-    if [ "${BENCH_TORCH_VENV_SYSTEM_SITE:-0}" = 1 ]; then
-        python -m venv --system-site-packages "$BENCH_VENV"   # reuse the site's CUDA torch
-    else
-        python -m venv "$BENCH_VENV"
-    fi
-    "$BENCH_VENV/bin/pip" install --upgrade pip
-    "$BENCH_VENV/bin/pip" install -r "$BENCH_REPO/requirements.txt" pytest
-    "$BENCH_VENV/bin/python" -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
-    bench_unload_torch_stack
+    bench_load_main_stack
+    make_venv main "$BENCH_VENV" "$BENCH_REPO/requirements.txt" pytest
+    bench_unload_main_stack
 
     if [ -f "$BENCH_REPO/requirements-alt.txt" ]; then
-        echo "== separate venv ($BENCH_VENV_ALT): stack that must not share the main torch"
-        bench_load_plain_python
-        python -m venv "$BENCH_VENV_ALT"
-        "$BENCH_VENV_ALT/bin/pip" install --upgrade pip
-        "$BENCH_VENV_ALT/bin/pip" install -r "$BENCH_REPO/requirements-alt.txt"
-        # triton can segfault on import on CPU-only nodes; CPU-only envs don't need it.
-        "$BENCH_VENV_ALT/bin/pip" uninstall -y triton || true
+        echo "== alt venv ($BENCH_VENV_ALT): the stack that can't share the main environment"
+        bench_load_alt_stack
+        make_venv alt "$BENCH_VENV_ALT" "$BENCH_REPO/requirements-alt.txt"
     fi
 }
 

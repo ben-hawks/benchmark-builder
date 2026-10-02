@@ -59,7 +59,7 @@ stratified, held-out-by-construction, etc.), and confirm they're non-overlapping
 | Train | | |
 | Validation | | |
 | Test | | |
-| (optional) Exemplar / held-out generalization set | | |
+| (optional) Held-out generalization set | | |
 
 **Schema.** Document every field/column in a sample, not just a link to "the data." If
 samples are structured records (JSON/Parquet/etc.), list each top-level field and what it

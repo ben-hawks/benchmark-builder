@@ -6,6 +6,45 @@ This release codifies [axess-benchmark](https://github.com/ben-hawks/axess-bench
 wa-hls4ml benchmark built with this skill) as the recommended structure for every
 benchmark, and folds in what organizing it and running it on NERSC Perlmutter taught.
 
+### Keep the generic templates free of wa-hls4ml specifics
+
+The skill's structure, pipeline and conventions are generic. What goes inside a benchmark's
+files is decided per benchmark while the skill runs, and is implemented in that
+benchmark's own code and docs. axess-benchmark's choices now appear only as labelled
+examples.
+
+- **Slurm templates:**
+  - new `assets/hpc/slurm/stack.sh` with empty `bench_stack_env`, `bench_post_install`
+    and `bench_check_env` hooks for the benchmark's own stack fixes;
+  - the PyTorch Geometric/triton workaround (`TORCHDYNAMO_DISABLE`, uninstalling triton)
+    and TensorFlow log settings are now commented examples, not defaults;
+  - stack-neutral names (`venv-main`, `bench_load_main_stack`, `BENCH_MAIN_MODULE`,
+    `BENCH_VENV_SYSTEM_SITE`);
+  - the venv interpreter is configurable (`BENCH_PYTHON`, default `python3`);
+  - the GPU device name and info command come from the machine profile, not hard-coded
+    `cuda`/`nvidia-smi`;
+  - jobs pass `--cache-dir`/`--split`, so the cache format is the benchmark's choice
+    (no `.npz`);
+  - Perlmutter's job sizes and modules are placeholders, keeping only verified cluster
+    facts.
+- **Repo snippets:**
+  - `report.py` needs this benchmark's `METRICS` (no R²/SMAPE default);
+  - `submission.py` has a task-specific `check_values()` hook and no cache-format
+    assumption;
+  - `test_pipeline.py` needs measured `RTOL`/`ATOL` (no copied tolerances);
+  - `build_bundle.py` has a `weak_baseline()` hook (no training-mean default);
+  - the snippets use `data.OUTPUT_COLUMNS` and `truth.truth_frame(cache_dir, split)` /
+    `scored_ids(cache_dir, split)`.
+- **References and SKILL.md:**
+  - missing-ground-truth handling, streaming, caching, post-processing, prediction
+    format, weak baselines, validity checks and test tolerances are now questions to
+    answer per benchmark;
+  - the cache step is optional in the pipeline contract;
+  - non-per-sample tasks define their own prediction artifact;
+  - `strict=True` is framed as one framework's strict loading;
+  - `references/hpc.md` separates machine facts from the benchmark's stack, and moves
+    the triton issue to "stack-specific problems: found per benchmark".
+
 ### SKILL.md
 
 - **Repository layout.** "Build the artifacts" now proposes the axess-derived layout

@@ -6,6 +6,9 @@
 #                                         +--> score (score_all.sh: truth, metrics,
 #   (after featurize)   infer_cpu --------+     leaderboard, Codabench zips)
 #
+# ADAPT: drop the featurize job (and point the others at raw data) if the benchmark has no
+# cache step, and the weights check if it has no pretrained weights.
+#
 # Usage, from the repo root on a login node, after setup.sh and the golden tests:
 #     BENCH_MACHINE=<machine> bash <hpc>/submit.sh -A <account> [--train] [--no-gpu] [--no-cpu] [sbatch args...]
 # Other arguments pass through to every sbatch call (e.g. -q debug). Per-job resources come

@@ -1,5 +1,6 @@
 #!/bin/bash
-# Featurize each split once into $BENCH_CACHE (CPU, embarrassingly parallel).
+# (Optional) Preprocess each split once into $BENCH_CACHE, in whatever format the
+# benchmark's cache module writes. Drop this job if the benchmark reads raw data directly.
 # Resources: BENCH_SB_FEATURIZE in the machine profile (passed by submit.sh).
 #SBATCH --job-name=bench-featurize
 #SBATCH --output=%x-%j.out
@@ -11,5 +12,5 @@ mkdir -p "$BENCH_CACHE"
 
 for split in $BENCH_SPLITS; do
     python -m benchpkg.cache --data-root "$BENCH_DATA" --split "$split" \
-        --out "$BENCH_CACHE/$split.npz" --workers "${SLURM_CPUS_PER_TASK:-1}"
+        --cache-dir "$BENCH_CACHE" --workers "${SLURM_CPUS_PER_TASK:-1}"
 done

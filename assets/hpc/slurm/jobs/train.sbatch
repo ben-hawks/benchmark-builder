@@ -1,8 +1,9 @@
 #!/bin/bash
 # OPTIONAL: only for benchmarks that include training (references/repo-structure.md,
 # "Score-only vs includes training"). Writes checkpoints + derived artifacts to
-# $BENCH_WEIGHTS for the inference jobs. Resources: BENCH_SB_TRAIN (GPU-heavy, possibly
-# multi-node). ADAPT: the model list, seeds, and the launcher (srun/torchrun for multi-GPU).
+# $BENCH_WEIGHTS for the inference jobs. Resources: BENCH_SB_TRAIN.
+# ADAPT: the model list, the training/validation split names, seeds, and the launcher
+# (srun, or the framework's own multi-GPU/multi-node launcher).
 #SBATCH --job-name=bench-train
 #SBATCH --output=%x-%j.out
 set -euo pipefail
@@ -12,6 +13,7 @@ bench_activate
 mkdir -p "$BENCH_WEIGHTS"
 
 for model in model_a; do
-    srun python -m benchpkg.train --model "$model" --cache "$BENCH_CACHE/train.npz" \
-        --val-cache "$BENCH_CACHE/val.npz" --out-dir "$BENCH_WEIGHTS" --seed "${BENCH_SEED:-0}"
+    srun python -m benchpkg.train --model "$model" --cache-dir "$BENCH_CACHE" \
+        --train-split train --val-split val --device "$BENCH_GPU_DEVICE" \
+        --out-dir "$BENCH_WEIGHTS" --seed "${BENCH_SEED:-0}"
 done

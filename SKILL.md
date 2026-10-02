@@ -148,21 +148,23 @@ construction method (random / stratified / held out by construction), and confir
 non-overlap. If there's room for a held-out generalization set distinct from the main
 test set (wa-hls4ml's "exemplar" set is a good model for this), ask if one makes sense.
 
-While you're on the dataset, pin down what `data.py` and `data/SCHEMA.md` will need
+While you're on the dataset, settle what `data.py` and `data/SCHEMA.md` will need.
+These are questions to answer from **this** dataset, not defaults to carry over
 (details in `references/repo-structure.md`):
 
-- **Sample IDs.** Each sample's `sample_id` rule must be unique per split. Note any
-  fallbacks; one axess subset had `model_id` instead of `uuid`.
+- **Sample IDs.** What uniquely identifies a sample within a split, and are there
+  fallbacks? (axess: one subset had `model_id` instead of `uuid`.)
 - **Ground truth and forbidden inputs.** Which field is the ground truth, and which
   fields are **not valid inputs** because they're labels or derived from them.
-- **Missing ground truth.** Samples without ground truth are excluded, never imputed.
-  Coverage is reported everywhere.
-- **Training-label filter vs scoring filter.** If upstream training used a different
-  sample filter than the benchmark's scoring, keep both. Use the upstream one for
-  anything that reproduces training, such as normalization stats (axess: 433,676 vs
-  433,674 train samples).
-- **Streaming.** Large files must be streamed (`ijson` with `use_float=True` for big
-  JSON arrays) and featurized once into a cache.
+- **Missing or invalid ground truth.** Does any exist? If so, ask the user whether those
+  samples are excluded, imputed, or scored as failures, and document the choice. (axess
+  excludes them.) Whatever the choice, report coverage.
+- **Training filter vs scoring filter.** If anything will reproduce upstream training,
+  did upstream select training samples differently from how the benchmark scores? If so,
+  keep both filters. (axess: 433,676 vs 433,674 train samples.)
+- **Size and format.** Does the data fit in memory? Is preprocessing expensive enough to
+  cache? (axess streamed 1.9 GB JSON arrays and cached features per split; a small
+  tabular dataset needs neither.)
 
 **C. Performance Metric(s).** What's actually being measured, and does it capture what
 matters, not just what's easy to compute? This is the rubric category with the most
@@ -234,7 +236,8 @@ contract is the same either way.
 mandatory, and their results go in `docs/VALIDATION.md`:
 
 1. **Identity and weights.** Confirm each checkpoint is the model the paper describes:
-   - load it with `strict=True` into the paper's architecture class;
+   - load it into the paper's architecture class with the framework's strict weight
+     matching, so a wrong architecture fails loudly (e.g. PyTorch `strict=True`);
    - record its sha256 in `weights/MANIFEST.json`;
    - find out where the weights actually live. They may not be published at all, or be a
      loose file or a release asset.
@@ -253,12 +256,17 @@ mandatory, and their results go in `docs/VALIDATION.md`:
      isn't a valid reference (`references/ontology.md`).
 3. **The whole inference procedure.** Weights + preprocessing + statistics +
    post-processing are all part of the reference solution:
-   - vendor preprocessing verbatim, with a bit-equivalence test against upstream;
-   - ship small derived artifacts the checkpoints don't contain (normalization stats,
-     prediction caps) in `weights/`. Rebuild them if necessary, and verify the rebuild
-     reproduces the checkpoint's own stored metrics;
-   - include post-processing that lives only in upstream eval code. In axess that was a
-     clip at the training maximum.
+   - if preprocessing is vendored, copy it verbatim, with a bit-equivalence test against
+     upstream;
+   - find any derived artifacts the checkpoints need but don't contain (e.g.
+     normalization statistics) and ship them in `weights/`. Rebuild them if they're
+     missing, and verify the rebuild reproduces the checkpoint's own stored metrics;
+   - look for post-processing that lives only in upstream eval code. (axess: a clip at
+     the training maximum.)
+
+   Each of these is something to look for in this benchmark's upstream code. Implement
+   what you find in this benchmark's package; none of them is a step every benchmark
+   has.
 4. **Per-sample agreement.** Where upstream predictions exist, compare per sample, not
    just aggregate metrics (axess: ≤2.8e-4 relative over 92,933 samples). Then record
    golden outputs on fixture samples (`tests/test_pipeline.py`), which is the portable
@@ -321,13 +329,26 @@ generalized from axess-benchmark. In summary:
 Every benchmark's run follows the same **pipeline contract**:
 
 ```
-fetch_data → cache → [train] → predict (per model, per split) → score_all.sh (truth, score, leaderboard, submissions)
+fetch_data → [cache] → [train] → predict (per model, per split) → score_all.sh (truth, score, leaderboard, submissions)
 ```
 
-The conventions are `<results>/<split>/predictions_<model>.csv` (all samples),
-`truth.csv` (scored samples only), `<model>/metrics.json`, `LEADERBOARD.md`, and
-`codabench/<model>_submission.zip`. A participant's model plugs in by writing
-`predictions_<name>.csv`; nothing else changes. Tell the user that in those words.
+The conventions are:
+- `<results>/<split>/predictions_<model>.<ext>` (all samples);
+- `truth.<ext>` (scored samples only);
+- `<model>/metrics.json` and `LEADERBOARD.md`;
+- `codabench/<model>_submission.zip`.
+
+For per-sample tasks the default prediction file is a CSV of `sample_id` plus one column
+per output; tasks with other outputs define their own artifact (`references/repo-structure.md`).
+A participant's model plugs in by writing its prediction files; nothing else changes.
+Tell the user that in those words.
+
+**Decide the contents per benchmark.** The structure is generic; the code inside it
+isn't. Data reading, missing-truth handling, metrics, preprocessing, stack workarounds,
+test tolerances and job sizes all come from this benchmark's interview answers and
+measurements. axess's choices appear in the references only as labelled examples. A fix
+found while building a benchmark goes into that benchmark's code and docs (e.g.
+`<hpc>/stack.sh`, `docs/VALIDATION.md`), never into this skill's templates.
 
 **Generate the tree; don't copy a skeleton.** Which optional pieces exist, which models,
 splits and targets there are, whether there's training, and which machines and submission
@@ -339,7 +360,7 @@ mode apply all vary per benchmark. Build each file from its contract in
 explain what it buys:
 
 - one uniform pipeline for every model;
-- participants plug in by writing one CSV;
+- participants plug in by writing their prediction files;
 - golden tests make a new machine verifiable before any job runs;
 - Codabench submissions and the bundle come out of the same truth function, so they
   can't drift from the benchmark.
@@ -540,9 +561,11 @@ pattern-match against:
    ("Scoring program contract"):
    - a module-level `SUBMISSION_FILES = [...]`, which the validator reads;
    - literal `os.path.join(prediction_dir, "<name>")` paths;
-   - tolerate one wrapping folder and ignore extra rows;
+   - tolerate one wrapping folder;
+   - ignore extra rows, if predictions may cover samples that aren't scored;
    - fail with a message naming the problem on a missing file, a missing sample, a
-     non-finite value, or a duplicate ID;
+     duplicate ID, or a value that's invalid for this task (e.g. non-finite for a
+     numeric output, an unknown label for classification);
    - write NaN as `null` in `scores.json`.
 7. **Ask for what only the user can supply**, sorted by `references/codabench.md`'s
    "Required vs. optional" list. Title, logo, terms, phase dates and submission mode are
@@ -641,8 +664,10 @@ run, and this doubles as the fastest way to prove the bundle actually works end 
    benchmark's scoring step reports real numbers rather than a pass/fail flag.
 
    **Run the discrimination check every time:** score the reference solution and the
-   weak-baseline zip from `build_bundle.py`, and report both. axess: mean R² 0.809 vs
-   0.000, SMAPE 10.3% vs 114%. If they don't separate clearly, flag it before calling
+   weak-baseline zip from `build_bundle.py`, and report both. Pick the weak baseline for
+   the task: e.g. the training mean for regression, the majority class for
+   classification, a random policy for control. (axess used the training mean: mean R²
+   0.809 vs 0.000, SMAPE 10.3% vs 114%.) If they don't separate clearly, flag it before calling
    the bundle done. Also check that Codabench's scores for the pipeline's zips equal the
    benchmark's own `metrics.json`.
 4. **Record the validation** in `codabench/README.md`: the mode, the phases, the ranking,

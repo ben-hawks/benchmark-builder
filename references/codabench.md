@@ -73,7 +73,7 @@ codabench/
 └── build/                 generated, git-ignored
     ├── bundle/            validate this
     ├── competition_bundle.zip   upload this
-    └── extra/baseline_mean_submission.zip   weak baseline for the discrimination check
+    └── extra/baseline_submission.zip   weak baseline for the discrimination check
 ```
 
 - **One truth function.** `build_bundle.py` imports the benchmark package's truth
@@ -83,14 +83,16 @@ codabench/
   - `starting_kit/<split>_sample_ids.csv`;
   - `solution/` (the reference model's predictions restricted to scored samples);
   - `starting_kit/sample_submission.zip`;
-  - a weak baseline (per-target training mean).
+  - a weak baseline chosen for the task, implemented in `weak_baseline()` (e.g. the
+    training mean for regression, which axess used; the majority class for
+    classification; a random policy for control).
 
   Hand-copying any of these into the bundle is how a bundle drifts from its benchmark.
 - **The benchmark pipeline emits submissions.** `src/<pkg>/submission.py`, the last step
   of `scripts/score_all.sh`, writes `<results>/codabench/<model>_submission.zip` for every
   model (`assets/repo/submission.py`). Each zip has exactly the scored samples, sits at
   the zip root, and gets the scoring program's own checks. A model with incomplete or
-  non-finite predictions gets no zip and a non-zero exit. Validate these zips against the
+  invalid predictions gets no zip and a non-zero exit. Validate these zips against the
   built bundle; their Codabench scores must equal the benchmark's `metrics.json`.
 - **Validate `build/bundle/`**, not `bundle_src/`, since the generated directories only
   exist in the build.
@@ -100,7 +102,8 @@ codabench/
 What every generated `scoring.py` must do. axess's
 `codabench/bundle_src/scoring_program/scoring.py` and
 `assets/codabench/results_example/bundle_src/scoring_program/scoring.py` both implement
-it:
+it for per-sample numeric predictions. Translate each rule to this benchmark's output
+type:
 
 - **Declare the submission contract** as a module-level constant the validator can read
   without importing the program:
@@ -112,9 +115,14 @@ it:
 - **Tolerate one wrapping folder** (search `prediction_dir` for the expected name if it
   isn't at the root), but document root-level files as the format.
 - **Fail with a message naming the problem**, on stderr with exit 1, for each of these:
-  missing file, missing column, duplicate `sample_id`, missing scored sample (say how
-  many and give examples), non-numeric value, NaN/inf.
-- **Ignore extra rows**, such as predictions for samples without ground truth.
+  - a missing file or column;
+  - a duplicate `sample_id`;
+  - a missing scored sample (say how many and give examples);
+  - a value that's invalid for this task (e.g. non-numeric or NaN/inf for a numeric
+    output, a label outside the class set for classification).
+- **Ignore extra rows** if predictions may legitimately cover samples that aren't scored
+  (axess: test samples without ground truth). Otherwise, decide whether extra rows are an
+  error.
 - **Write NaN as `null`** in `scores.json` (JSON has no NaN). Print the full per-group
   tables to stdout for the detailed-results panel.
 
@@ -122,13 +130,14 @@ it:
 
 - **Rank on a bounded metric of the primary split.** Leaderboard column `index: 0` is
   the ranking key.
-  - Don't rank on a metric that's unbounded below, such as R² on an out-of-distribution
-    split. axess's training-mean baseline scored −2651 on its exemplar split.
+  - Don't rank on a metric that's unbounded below on some split (axess: R² on its
+    out-of-distribution exemplar split, where the training-mean baseline scored −2651).
   - Show such metrics as extra columns, and break ties with a second primary-split
     metric.
 - **Discrimination check, every time the bundle is built:** score the reference solution
-  and the weak baseline, and report both. axess: test mean R² 0.809 vs 0.000, SMAPE 10.3%
-  vs 114%. If they don't clearly separate, the metric or the bundle is wrong.
+  and the task's weak baseline, and report both (axess: test mean R² 0.809 vs 0.000,
+  SMAPE 10.3% vs 114%). If they don't clearly separate, the metric or the bundle is
+  wrong.
 
 ## Bundle directory structure
 
