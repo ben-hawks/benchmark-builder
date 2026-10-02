@@ -91,7 +91,8 @@ already gathered:
 
 - **Model Card** ← element D (Reference Solution): architecture, training
   procedure, hyperparameters, results, requirements map directly onto
-  whatever fields the current template asks for. Map field-by-field once
+  whatever fields the current template asks for. The results themselves are
+  written by script (see "Evaluation results in a Model Card" below). Map field-by-field once
   the live template is in hand; don't guess the mapping in advance since the
   fields aren't known until fetched.
 - **Agent Card** ← element A (Problem Specification, for what the agent is
@@ -106,3 +107,54 @@ for a data card the generator's own name, `genesis_datacard_<name>.md`) alongsid
 the benchmark card, using whatever structure the
 live template actually specifies — copy its section headers, don't invent a
 structure that merely resembles what this doc describes above.
+
+## Evaluation results in a Model Card: written by script
+
+A Model Card's evaluation sections report the benchmark's numbers for that model. Follow
+the genesis `card-eval-updater` rule: **every number is copied by a script from the run's
+output, never retyped**, and a validator re-renders the block to prove it still matches.
+
+| Benchmark | Tool | Reads | Writes |
+|---|---|---|---|
+| LLM benchmark (lm-eval, Eval Factory or NeMo-Skills runs) | the genesis `card-eval-updater` skill (`references/genesis-skills.md`) | one run directory | `### Automated benchmark results` blocks in `## Evaluation data`, `## Evaluation Procedure`, `## Uncertainty Quantification` and `## Evaluation results`, plus `metrics:` entries |
+| any other benchmark | `scripts/render_card_results.py` | `reference_results/<split>/<model>/metrics.json` | a `### Benchmark results (from metrics.json)` block in `## Evaluation results` (coverage and source sha256 included), plus `<benchmark>/<metric>` entries in `metrics:` |
+
+For a non-LLM benchmark, run from the benchmark repo root:
+
+```bash
+python scripts/render_card_results.py MODEL_CARD.md --benchmark <name> --model <model> --results reference_results
+python scripts/render_card_results.py MODEL_CARD.md --benchmark <name> --model <model> --results reference_results --check
+```
+
+- `--check` exits 1 if a number in the card no longer matches its `metrics.json`. Run it
+  after every re-run of the reference results, alongside re-checking `rubric.yaml`'s
+  evidence (`SKILL.md`, "Iterate").
+- Hand-written prose and tables in `## Evaluation results` stay above the block. Write the
+  interpretation there ("the exemplar split is out of distribution, so R² < 0 is expected"),
+  never inside the block.
+- The two tools use different block headings, so they can share a card: tested on one card
+  with both blocks, both validators pass.
+- The other evaluation sections (`## Evaluation data`, `## Evaluation Procedure`,
+  `## Uncertainty Quantification`) stay hand-written for a non-LLM benchmark, from elements
+  B and E. If the benchmark has calibration metrics (`references/metrics-and-uq.md`),
+  report them in `## Uncertainty Quantification`. They're also in the rendered table.
+
+## Step by step
+
+1. **Ask which card(s) apply.** Model Card when element D is a trained model, Agent Card
+   when element D (or the benchmark's own task) is an agentic system, and/or Dataset/Data
+   Card for element B. Don't assume all three.
+2. **Fetch the current landing page and its linked template/examples live** for each Model
+   or Agent card that applies (the table at the top of this file). These are DOE-maintained
+   pages this skill has no schema for and no way to keep in sync. Never draft a card from
+   memory of an earlier fetch if meaningful time has passed, and never from this file's
+   paraphrase of what the template contains.
+3. **Map from what this skill already built** ("How this fits what this skill already
+   builds", above) rather than re-running the interview. Match the live template's actual
+   section headers; don't impose a structure of your own.
+4. **Write the evaluation results by script** (the section above), never by hand.
+5. **Save each card as its own file** (e.g. `MODEL_CARD.md`, `AGENT_CARD.md`) alongside the
+   benchmark card.
+6. **For a Data Card, run the genesis `datacard-generator` skill** (above). It writes
+   `genesis_datacard_<name>.md` and validates it with `linkml-validate`. Worked example:
+   `examples/wa-hls4ml/genesis_datacard_wa_hls4ml.md`.
