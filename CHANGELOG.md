@@ -1,5 +1,75 @@
 # Changelog
 
+## Unreleased (2026-10-02): Genesis Mission skills integration
+
+benchmark-builder now loads skills from
+[AI-ModCon/genesis-skills](https://github.com/AI-ModCon/genesis-skills) on demand instead
+of carrying its own version of what they do. Workflow skills are pinned to commit
+`b7e8434`; HPC site skills are loaded at their latest version whenever the user names the
+machine. The skills are loaded and followed, never copied into this repo.
+`references/genesis-skills.md` maps each step to its skill and records the problems found
+by running them.
+
+### SKILL.md
+
+- **Shorter.** Down from 675 lines to under 430. The Codabench steps move to
+  `references/codabench-workflow.md`, with a short "Package for Codabench" section kept in
+  SKILL.md. The corpus-entry steps move to `references/mlcommons-corpus-format.md`, the
+  xCard steps to `references/doe-gear-cards.md`, and the element D checks to
+  `references/reference-solution-checks.md`.
+- **New hooks:**
+  - a "Read first" entry for `references/genesis-skills.md`;
+  - an "Is it an LLM benchmark?" branch;
+  - Croissant and data-card hooks in element B;
+  - the independent metric recomputation and uncertainty questions in element C;
+  - loading the genesis HPC skills as soon as a machine is named (element E);
+  - an "Additional deliverables" section.
+
+### LLM benchmarks (new)
+
+- `references/llm-benchmarks.md`:
+  - the task is built with the genesis lm-eval-harness skills;
+  - lm-eval's output is the canonical record of each run, exported to the usual
+    per-sample prediction CSV;
+  - LLM-specific checks: model identity and revision, chat template and protocol
+    parity, contamination, answer-format artifacts, statistical power, a weak control
+    model;
+  - model cards via `card-eval-updater`, NeMo-Skills on Perlmutter, and Codabench.
+- `assets/repo/lm_eval_export.py` and `assets/repo/predict_lm_eval.sh`. Run end to end
+  with lm-eval 0.4.13 and pythia-14m. The export reproduced lm-eval's `acc`/`acc_norm`
+  on every sample, and `card-eval-updater` validated the resulting card.
+
+### HPC
+
+- PBS support: `assets/hpc/pbs/` (a `qsub -W depend=` chain, `jobs/*.pbs`, generic
+  and Aurora profiles). The scheduler-neutral `env.sh`, `stack.sh` and `setup.sh` move to
+  `assets/hpc/common/`.
+- New Slurm profile `frontier.sh`. **The Frontier and Aurora profiles are unverified**:
+  they're drafted from the genesis site skills, with `<...>` placeholders for what those
+  skills don't cover.
+- `references/hpc.md`:
+  - pre-fill profiles from the genesis site/scheduler skills, and record where each value
+    came from;
+  - a site-profile status table;
+  - notes on the genesis HPC skills (PBS array syntax, Frontier `$MEMBERWORK` path form).
+- Both submit chains were dry-run against mocked `sbatch`/`qsub`.
+
+### Dataset, metrics, cards
+
+- Croissant metadata via `croissant-validator`, as an optional `data/croissant.json`.
+  `datacard-generator` is now loaded from genesis-skills.
+- `references/metrics-and-uq.md`: recompute standard metrics with `uq-metrics-evaluator`
+  and record agreement in `docs/VALIDATION.md`. When calibration metrics belong in a
+  benchmark, and the `uncertainty-quantification` audit.
+- `scripts/metrics.py`: `brier_score`, `expected_calibration_error`, `gaussian_nll`,
+  `interval_calibration`. All match `uq-metrics-evaluator` / uncertainty-toolbox on
+  synthetic data.
+- `scripts/render_card_results.py`: writes a non-LLM benchmark's `metrics.json` into a
+  model card's Evaluation results section, with `--check` to catch numbers that no longer
+  trace to their source. It can share a card with `card-eval-updater`.
+- `references/repo-structure.md`: `tasks/<task>/`, `data/croissant.json`, and
+  `docs/VALIDATION.md` sections for the independent recomputation and the tools used.
+
 ## Unreleased (2026-10-02): axess-benchmark repository structure
 
 This release codifies [axess-benchmark](https://github.com/ben-hawks/axess-benchmark) (the

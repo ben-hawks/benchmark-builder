@@ -198,3 +198,48 @@ above (required fields present, `>=1` list fields non-empty, `cite` entries
 look like bibtex, ratings in range) — always run it before treating the
 entry as finished, the same way `score_benchmark.py` and
 `validate_codabench_bundle.py` are never skipped for their own artifacts.
+
+## Step by step
+
+Do this once the standalone benchmark and its rubric score both exist. The
+sections above give the field-by-field mapping, the two real ambiguities in the
+source schema, and the schema-vs-practice mismatch found by testing the
+validator against a cataloged entry; don't rediscover these by guessing.
+
+1. **Start from `assets/mlcommons_corpus_entry_template.yaml`.** Most fields
+   map directly from work already done — the field-by-field table above says
+   exactly where each one comes from (rubric.yaml's six scores map 1:1 onto
+   `ratings`, no rescaling needed). A few fields (`keywords`,
+   `ai_capability_measured`, `ml_task`) aren't collected anywhere else in this
+   skill's workflow — synthesize them from what you already know rather than
+   leaving them blank, but say plainly that they're a synthesis, not a fact
+   pulled from a source.
+2. **Pick `name` with its downstream URL in mind.** The published corpus
+   derives each entry's page URL from `name` automatically — there's no
+   separate `id`/`slug` field to set. The exact derivation lives in the
+   upstream repo's own code and can change, so per "How `name` becomes the
+   entry's published URL" above, fetch
+   it fresh rather than trusting a paraphrase before finalizing `name`.
+3. **Ask about `url` and `contact` rather than assuming.** If this is a
+   formalized existing benchmark (not built from scratch), the "The url
+   decision" section above explains why this is a real, unresolved
+   choice between the upstream project and the newly-formalized package --
+   ask the user. Similarly, never default to listing the user's own contact
+   info without asking first.
+4. **Only set `valid: true` / `fair.reproducible: true` / `fair.benchmark_ready: true`
+   if actually verified**, the same bar this skill already applies everywhere
+   else -- these are booleans per the documented schema (a real cataloged
+   entry using strings instead is a known, documented mismatch to not repeat).
+5. **Validate before calling it done**:
+   ```bash
+   python scripts/validate_corpus_entry.py <entry.yaml>
+   ```
+   Fix everything it flags as an error; warnings (e.g. the deprecated
+   `solutions` field, or `ml_motif` diverging from `task_types`) are judgment
+   calls to consider, not blockers.
+6. **If the entry is actually headed upstream as a PR**, fetch and follow the
+   upstream repo's own `CONTRIBUTING.md` and `docs/benchmark-format.md`
+   live rather than relying on any paraphrase of them — see the "If this entry is headed
+   upstream" section above for exactly which files and why this is a live
+   dependency, not baked-in fact.
+

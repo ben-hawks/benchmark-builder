@@ -1,32 +1,44 @@
-# Running a benchmark on HPC (Slurm)
+# Running a benchmark on HPC (Slurm or PBS)
 
-The skill generates **generic Slurm** scripts, tuned per machine and per benchmark:
+The skill generates **generic Slurm or PBS** scripts, tuned per machine and per benchmark:
 - the job scripts know nothing about any cluster or software stack;
 - cluster facts come from a **machine profile**;
 - the benchmark's own software-stack settings and fixes come from **`stack.sh`**.
 
-NERSC Perlmutter is one worked profile (the one axess-benchmark ran on), **not the
-default**.
+NERSC Perlmutter is one worked, verified profile (the one axess-benchmark ran on), **not
+the default**. OLCF Frontier (Slurm) and ALCF Aurora (PBS) have profiles drafted from the
+genesis HPC skills that **haven't been verified by a run yet** (see "Site profiles").
 
-Templates: `assets/hpc/slurm/`
+**Load the genesis HPC skills on demand.** As soon as the user says they run on a machine,
+load its genesis skill (`perlmutter`, `frontier`, `aurora`) and the scheduler skill
+(`slurm` or `pbs`), at their latest version (`references/genesis-skills.md`). They are the
+source for site facts (queues, limits, GPUs, filesystems, modules) and for submitting,
+monitoring and troubleshooting jobs. This file covers what they don't: how the benchmark's
+pipeline maps onto jobs, and which answers only the user and the benchmark can give.
+
+Templates: `assets/hpc/common/` (scheduler-neutral) plus `assets/hpc/slurm/` or
+`assets/hpc/pbs/`. A benchmark's `<hpc>/` directory gets the common files plus one
+scheduler's files:
 
 ```
-<hpc>/                       e.g. slurm/ (or one dir per cluster family; axess uses perlmutter/)
-├── env.sh                   paths with overridable defaults, activation functions; sources profile + stack.sh
+<hpc>/                       e.g. slurm/ or pbs/ (or one dir per cluster family; axess uses perlmutter/)
+├── env.sh                   (common) paths with overridable defaults, activation functions; sources profile + stack.sh
+├── stack.sh                 (common) this benchmark's stack: environment settings, post-install fixes, import checks
+├── setup.sh                 (common) login node: build venvs, download data + weights (sha256-checked)
 ├── profiles/<machine>.sh    cluster facts: scheduler syntax, filesystems, network, GPUs, modules (one per machine)
-├── stack.sh                 this benchmark's stack: environment settings, post-install fixes, import checks
-├── setup.sh                 login node: build venvs, download data + weights (sha256-checked)
-├── submit.sh                -A <account>: Slurm dependency chain
-└── jobs/
-    ├── featurize.sbatch     (optional) CPU: dataset → cache, only if the benchmark has a cache step
-    ├── train.sbatch         (optional) only when the benchmark includes training
-    ├── infer_gpu.sbatch     accelerator models
-    ├── infer_cpu.sbatch     CPU-only models
-    └── score.sbatch         scripts/score_all.sh: truth, metrics, leaderboard, Codabench zips
+├── submit.sh                -A <account>: Slurm (sbatch --dependency) or PBS (qsub -W depend=) chain
+└── jobs/                    *.sbatch for Slurm, *.pbs for PBS
+    ├── featurize            (optional) CPU: dataset → cache, only if the benchmark has a cache step
+    ├── train                (optional) only when the benchmark includes training
+    ├── infer_gpu            accelerator models
+    ├── infer_cpu            CPU-only models
+    └── score                scripts/score_all.sh: truth, metrics, leaderboard, Codabench zips
 ```
 
 Rename the `BENCH_`/`bench_` prefix and the `benchpkg` package to the benchmark's own, set
-the model lists in the job scripts, and drop the jobs this benchmark doesn't need.
+the model lists in the job scripts, and drop the jobs this benchmark doesn't need. Slurm
+profiles set per-job resources in `BENCH_SB_*` (sbatch arguments), PBS profiles in
+`BENCH_QS_*` (qsub arguments).
 
 ## Machine facts vs the benchmark's stack
 
@@ -52,15 +64,23 @@ one benchmark's workaround from becoming everyone's default.
 ## Ask which machine(s) first
 
 **Ask the user which machine(s) they'll run on. Don't assume Perlmutter or any other
-cluster.** If they name more than one, generate one profile per machine. Then ask what
-the materials and the site docs don't already answer. If the user doesn't know an answer,
-look it up in the site's public user docs and say where the value came from.
+cluster.** If they name more than one, generate one profile per machine. Then, per machine:
+
+1. **Load the genesis skills for it** (site + scheduler, latest version). Pre-fill the
+   profile from them, starting from the site profile here if there is one, else
+   `profiles/generic.sh` for that scheduler.
+2. **Ask the user only what's left**: their account/allocation, the benchmark's stack, and
+   anything the skills don't cover. Each site profile marks those gaps with `<...>`.
+3. **If neither the skill nor the user knows**, look it up in the site's public user docs.
+4. **Record where each value came from** in `docs/<MACHINE>.md`: the genesis skill and the
+   commit you loaded, the site docs page, or the user. When a skill and the site's docs
+   disagree, the docs win; note the disagreement.
 
 ### What to ask per machine
 
 | Area | Questions | Goes into |
 |---|---|---|
-| Scheduler | partition and/or qos names for CPU, GPU, debug; `--constraint` values; is there an account/allocation flag; GPU request syntax (`--gpus=N`, `--gres=gpu:N`, `--gpus-per-node=N`); shared vs exclusive nodes; wall-time limits per qos | `BENCH_SB_*` syntax, `BENCH_REQUIRE_ACCOUNT` |
+| Scheduler | Slurm or PBS; partition/qos (Slurm) or queue (PBS) names for CPU, GPU, debug; `--constraint` values; is there an account/allocation flag; GPU request syntax (`--gpus=N`, `--gres=gpu:N`, `--gpus-per-node=N`, or PBS `select=...:ngpus=N`); site-required resources (e.g. Aurora's `-l filesystems=`); shared vs exclusive nodes; wall-time and job-count limits per qos/queue | `BENCH_SB_*` / `BENCH_QS_*` syntax, `BENCH_REQUIRE_ACCOUNT` |
 | Software | module names and versions; conda vs venv vs a container runtime (podman-hpc, Apptainer/Singularity, Shifter); does the site provide a tuned build of the benchmark's framework that a venv should layer on | `BENCH_*_MODULE`, `bench_load_*` functions, `BENCH_VENV_SYSTEM_SITE`, `BENCH_PYTHON` (default `python3`) |
 | Filesystems | scratch vs project/home paths; purge policy and quota; where caches, results, venvs belong | `BENCH_ROOT`, `docs/<MACHINE>.md` |
 | Network | do compute nodes have internet? | where downloads happen (always `setup.sh` on a login node if not) |
@@ -72,7 +92,7 @@ look it up in the site's public user docs and say where the value came from.
 |---|---|
 | Which frameworks do the reference models need, and do any conflict (e.g. two frameworks pinning different versions of a shared dependency)? | `requirements*.txt`, one venv per conflicting stack |
 | Which device name does the code take for the machine's accelerators? | `BENCH_GPU_DEVICE` |
-| How much memory, time and how many cores does each step need on this data? Measure a small run. | `BENCH_SB_*` sizes |
+| How much memory, time and how many cores does each step need on this data? Measure a small run. | `BENCH_SB_*` / `BENCH_QS_*` sizes |
 
 Write what was assumed for each machine, and where each answer came from, into
 `docs/<MACHINE>.md`. That file covers:
@@ -87,13 +107,14 @@ Model it on axess-benchmark's `docs/PERLMUTTER.md`.
 
 ## How the pieces fit
 
-- **#SBATCH lines can't expand variables.** That's why resources and the account go on
-  the `sbatch` command line from `submit.sh` (from the profile's `BENCH_SB_*`), and the
-  job scripts carry only `--job-name` and `--output`.
-- **Slurm runs a spooled copy of the job script.** So `$(dirname $0)` points into the
-  spool directory. `submit.sh` passes the repo path through
-  `--export=ALL,BENCH_REPO=...,BENCH_HPC=...`, and the jobs source
-  `$BENCH_REPO/$BENCH_HPC/env.sh`.
+- **Neither `#SBATCH` nor `#PBS` lines can expand variables.** That's why resources and the
+  account go on the `sbatch`/`qsub` command line from `submit.sh` (from the profile's
+  `BENCH_SB_*`/`BENCH_QS_*`), and the job scripts carry only a job name and output option.
+- **The job script doesn't run from where it was submitted.** Slurm runs a spooled copy,
+  so `$(dirname $0)` points into the spool directory; PBS starts the job in `$HOME`.
+  `submit.sh` passes the repo path through `--export=ALL,BENCH_REPO=...,BENCH_HPC=...`
+  (Slurm) or `qsub -v BENCH_REPO=...,BENCH_HPC=...` (PBS; values can't contain commas),
+  and the jobs source `$BENCH_REPO/$BENCH_HPC/env.sh`.
 - **One venv per stack that has to stay separate**, and only when stacks really conflict.
   (axess on Perlmutter: a venv layered on NERSC's PyTorch module with
   `--system-site-packages`, plus a separate plain venv for TensorFlow and rule4ml so their
@@ -113,7 +134,12 @@ Model it on axess-benchmark's `docs/PERLMUTTER.md`.
     `featurize`;
   - `score` runs after all inference jobs;
   - `submit.sh` flags: `--train`, `--no-gpu`, `--no-cpu`. Anything else passes through
-    to `sbatch` (e.g. `-q debug`).
+    to `sbatch`/`qsub` (e.g. `-q debug`).
+  - Check the site's per-queue job limits before submitting a whole chain to a debug
+    queue. Aurora's `debug` allows one running and one queued job per user.
+- **Multi-process launchers are per site.** Slurm sites use `srun`; Aurora uses `mpiexec`
+  (there is no `srun`). Take the launcher and GPU-binding options for `train` from the
+  site skill.
 - **After the run**, compare against `reference_results/` (every `metrics.json` cell) and
   record the job IDs, exit codes and max relative difference in `docs/VALIDATION.md`.
   Add accelerator timings to `reference_solution/README.md`.
@@ -141,7 +167,42 @@ own scripts (uninstall triton in the CPU-only venv; `TORCHDYNAMO_DISABLE=1`), an
 template's `stack.sh` shows that only as a commented example. A benchmark without that
 stack must not inherit the fix.
 
-## Worked profile: NERSC Perlmutter
+## Site profiles
+
+| Profile | Scheduler | Status |
+|---|---|---|
+| `slurm/profiles/perlmutter.sh` | Slurm | **verified** 2026-10-02 with axess-benchmark (below) |
+| `slurm/profiles/frontier.sh` | Slurm | **unverified**: drafted from the genesis `frontier` skill (`b7e8434`) |
+| `pbs/profiles/aurora.sh` | PBS | **unverified**: drafted from the genesis `aurora` skill (`b7e8434`) |
+| `slurm/profiles/generic.sh`, `pbs/profiles/generic.sh` | either | templates for any other machine |
+
+An unverified profile is a starting point, not a fact sheet:
+- reload the site skill at its latest version and the site's docs, and re-check every
+  value;
+- fill its `<...>` placeholders (the skills don't cover compute-node internet, Python or
+  ML framework modules, or the exact scratch path form) from the user and the site docs;
+- run the golden tests and a full chain on the machine.
+
+Only then change its header to "verified <date> with <benchmark> (jobs ...)" and add its
+row to this table. Never copy one site's values to another machine.
+
+### Notes on the genesis HPC skills
+
+These were found while drafting the profiles. Check whether they still hold in the latest
+version before acting on them.
+
+- The `pbs` skill documents `-t 1-100` and `$PBS_ARRAY_INDEX` for job arrays. In OpenPBS
+  and PBS Pro (Aurora, Polaris), arrays use `-J 1-100`; `-t` with `$PBS_ARRAYID` is
+  Torque's syntax. The templates here don't use arrays, but if a benchmark adds them,
+  confirm the syntax with `man qsub` on the machine.
+- The `frontier` skill's storage table gives `$MEMBERWORK` as
+  `/lustre/orion/<proj>/scratch/user`. Check the per-project directory form against OLCF's
+  docs before setting `BENCH_ROOT`.
+- The `perlmutter` skill and `slurm/profiles/perlmutter.sh` agree on the facts the profile
+  uses (`-C cpu|gpu`, the `shared`/`regular`/`debug` QOS, `$SCRATCH`'s 8-week purge, a
+  required `-A`).
+
+### Worked profile: NERSC Perlmutter
 
 `assets/hpc/slurm/profiles/perlmutter.sh` holds the cluster facts verified with
 axess-benchmark on 2026-10-02 (Slurm jobs 59209565–68: all exit 0, results matched the
@@ -172,5 +233,6 @@ axess's stack on Perlmutter (its own choice):
 - a separate TensorFlow venv on `module load python`;
 - the triton fix above.
 
-For any other machine, start from `profiles/generic.sh` and fill every value from the
-questions above. Don't copy Perlmutter's values to a machine they weren't verified on.
+For any other machine, start from the scheduler's `profiles/generic.sh` (or an unverified
+site profile above) and fill every value from the genesis site skill and the questions
+above. Don't copy Perlmutter's values to a machine they weren't verified on.

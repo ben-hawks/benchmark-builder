@@ -13,15 +13,19 @@ credit regardless of how polished the code computing them is.
 What IS implemented here are primitives for the two motifs common enough, and generic
 enough, to be worth not reimplementing every time: regression (r_squared, smape, rmse, mae,
 relative_l2_error, relative_percent_error + plot_rpe_boxplot) and classification/anomaly
-detection (classification_report, roc_auc). The regression trio's epsilon handling in
-particular (see smape's docstring) mirrors wa-hls4ml (arXiv:2511.05615, Section 3.2)
-specifically because it's easy to get subtly wrong, not because R^2/SMAPE/RMSE are the
-"correct" choice for every regression benchmark -- swap in mae or relative_l2_error instead
-where those fit better (see FEABench/CFDBench in the ontology.md table), or write something
-else entirely if the task calls for it.
+detection (classification_report, roc_auc), plus calibration metrics for models that output
+an uncertainty or a probability (brier_score, expected_calibration_error, gaussian_nll,
+interval_calibration; see references/metrics-and-uq.md for when they belong in a
+benchmark). The regression trio's epsilon handling in particular (see smape's docstring)
+mirrors wa-hls4ml (arXiv:2511.05615, Section 3.2) specifically because it's easy to get
+subtly wrong, not because R^2/SMAPE/RMSE are the "correct" choice for every regression
+benchmark -- swap in mae or relative_l2_error instead where those fit better (see
+FEABench/CFDBench in the ontology.md table), or write something else entirely if the task
+calls for it.
 
-This module only requires numpy for the metric functions; matplotlib is only imported
-inside plot_rpe_boxplot, so importing this module doesn't require a display backend.
+This module only requires numpy (and the standard library) for the metric functions;
+matplotlib is only imported inside plot_rpe_boxplot, so importing this module doesn't
+require a display backend.
 
 Usage:
     import numpy as np
@@ -229,6 +233,93 @@ def roc_auc(y_true, y_score):
     sum_ranks_pos = np.sum(ranks[y_true == 1])
     auc = (sum_ranks_pos - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg)
     return float(auc)
+
+
+# ---------------------------------------------------------------------------
+# Calibration / uncertainty metrics (numpy + stdlib only)
+#
+# Only for benchmarks whose models output an uncertainty (a Gaussian std per prediction) or
+# a class probability, and where calibration is part of what the benchmark measures
+# (references/metrics-and-uq.md). The definitions match the genesis uq-metrics-evaluator
+# skill (uncertainty-toolbox for regression, its own ECE/Brier for classification), so that
+# skill can serve as an independent cross-check; differences are noted per function.
+# ---------------------------------------------------------------------------
+
+
+def brier_score(y_true, y_prob):
+    """Mean squared error between the predicted positive-class probability and the 0/1
+    label (binary). Lower is better; 0.25 is what a constant 0.5 scores."""
+    y_true = np.asarray(y_true, dtype=float)
+    y_prob = np.asarray(y_prob, dtype=float)
+    return float(np.mean((y_prob - y_true) ** 2))
+
+
+def expected_calibration_error(y_true, y_prob, n_bins=10):
+    """Binary ECE and MCE of the positive-class probability, with equal-width bins.
+
+    ECE = sum over bins of (bin fraction) * |fraction positive - mean probability|; MCE is
+    the largest per-bin gap. Empty bins are skipped. The last bin is closed ([0.9, 1.0]),
+    so a probability of exactly 1.0 is counted. (uq-metrics-evaluator uses half-open bins
+    everywhere, which drops p == 1.0 from every bin; the two agree whenever no probability
+    is exactly 1.0.) This is the calibration of the positive-class probability, not the
+    "top-label confidence" ECE used for multi-class models; say which one the benchmark
+    reports."""
+    y_true = np.asarray(y_true, dtype=float)
+    y_prob = np.asarray(y_prob, dtype=float)
+    edges = np.linspace(0.0, 1.0, n_bins + 1)
+    idx = np.clip(np.searchsorted(edges, y_prob, side="right") - 1, 0, n_bins - 1)
+    ece, mce, n = 0.0, 0.0, len(y_true)
+    for b in range(n_bins):
+        mask = idx == b
+        if not mask.any():
+            continue
+        gap = abs(y_true[mask].mean() - y_prob[mask].mean())
+        ece += mask.sum() / n * gap
+        mce = max(mce, gap)
+    return {"ece": float(ece), "mce": float(mce)}
+
+
+def gaussian_nll(y_true, mu, sigma):
+    """Mean negative log-likelihood of y_true under N(mu, sigma^2), per sample. sigma must
+    be strictly positive; a benchmark should reject submissions where it isn't rather than
+    clip it. Matches uncertainty-toolbox's nll_gaussian (scaled)."""
+    y_true = np.asarray(y_true, dtype=float)
+    mu = np.asarray(mu, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+    if np.any(sigma <= 0):
+        raise ValueError("gaussian_nll: sigma must be > 0 for every sample")
+    z = (y_true - mu) / sigma
+    return float(np.mean(0.5 * np.log(2 * np.pi) + np.log(sigma) + 0.5 * z**2))
+
+
+def interval_calibration(y_true, mu, sigma, n_levels=100):
+    """Calibration of Gaussian central prediction intervals.
+
+    For each expected coverage p in linspace(0, 1, n_levels), the observed coverage is the
+    fraction of samples with |y - mu| / sigma <= z_p, where z_p is the two-sided
+    standard-normal quantile (z_0 = 0, z_1 = inf). Returns the mean and RMS absolute gap between expected and
+    observed coverage (uncertainty-toolbox's mean_absolute_calibration_error and
+    root_mean_squared_calibration_error with prop_type="interval"), plus the curve itself for
+    a reliability plot. 0 is perfectly calibrated."""
+    from statistics import NormalDist
+
+    y_true = np.asarray(y_true, dtype=float)
+    mu = np.asarray(mu, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+    if np.any(sigma <= 0):
+        raise ValueError("interval_calibration: sigma must be > 0 for every sample")
+    abs_z = np.abs((y_true - mu) / sigma)
+    expected = np.linspace(0.0, 1.0, n_levels)
+    nd = NormalDist()
+    z = [float("inf") if p >= 1.0 else nd.inv_cdf(0.5 + p / 2) for p in expected]
+    observed = np.array([np.mean(abs_z <= zp) for zp in z])
+    gaps = np.abs(observed - expected)
+    return {
+        "mean_calibration_error": float(np.mean(gaps)),
+        "rms_calibration_error": float(np.sqrt(np.mean(gaps**2))),
+        "expected": expected.tolist(),
+        "observed": observed.tolist(),
+    }
 
 
 if __name__ == "__main__":

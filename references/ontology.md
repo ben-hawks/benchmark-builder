@@ -203,6 +203,11 @@ documents real examples per motif, reproduced here:
 | Surrogate Modeling | CFDBench, The Well | L2 error, MAE |
 | Reasoning & Generalization | MedQA, FrontierMath, AIME | Task accuracy |
 
+For benchmarks that evaluate language models (most Reasoning & Generalization and many
+Multimodal Reasoning entries above), the metrics are defined in an lm-evaluation-harness
+task and re-implemented in the benchmark's `score.py`; see `references/llm-benchmarks.md`
+for the extraction, normalization and statistical-power questions they raise.
+
 Read this table as "here's the shape of a good answer for this motif," not a menu to copy
 verbatim — e.g. a new anomaly-detection benchmark should ask whether ROC-AUC/precision-recall
 actually fits its own class balance and cost structure, not just adopt them because two prior
