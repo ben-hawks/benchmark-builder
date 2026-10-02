@@ -74,3 +74,13 @@ benchmark, and folds in what organizing it and running it on NERSC Perlmutter ta
 - `references/codabench.md`: the build pattern, the scoring contract, ranking and
   discrimination, and tier 3/4 troubleshooting.
 - `.gitattributes` keeps `*.sh`/`*.sbatch` templates LF on Windows checkouts.
+- `SKILL.md` description trimmed to 983 characters (limit 1024).
+- `examples/wa-hls4ml/` cards re-targeted to axess-benchmark:
+  - `MODEL_CARD.md` now documents the retrained reference GNN (release
+    `resource-report-retrain`), following the live GEAR Model Card v1 template fetched
+    2026-10-02, instead of the paper's HLS-estimate checkpoint;
+  - `BENCHMARK_CARD.md` follows the skill's card template. It states the ground truth
+    (post-synthesis resources, post-HLS latency), coverage, reference results, ontology
+    motifs, Table 4 caveats and the published citation;
+  - `DATA_CARD.md` (still a hand-filled v1.2 outline) gets the ground-truth, latency,
+    coverage, revision, mirror and citation fixes.

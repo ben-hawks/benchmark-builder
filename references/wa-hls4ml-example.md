@@ -25,10 +25,15 @@ Use this file three ways:
 3. **As a calibration point for the rubric.** If your scoring of an apples-to-apples
    benchmark disagrees wildly with this one, check how you're applying the rubric.
 
-The DOE GEAR cards in `examples/wa-hls4ml/` were drafted from the paper and describe the
-paper's original GNN. They predate the facts below; in particular, the paper's Table 4
-GNN checkpoint was trained on HLS estimates (§D). Cross-check against the repo before
-reusing their claims.
+`examples/wa-hls4ml/` holds this benchmark's cards, re-targeted to axess-benchmark on
+2026-10-02:
+- `BENCHMARK_CARD.md`;
+- a DOE GEAR `MODEL_CARD.md` for the retrained reference GNN (not the paper's Table 4
+  checkpoint);
+- a hand-filled `DATA_CARD.md`.
+
+The first drafts (2026-08-28) were built from the paper alone and got the points in §B–D
+below wrong. That's a concrete case of why reading isn't verifying.
 
 ## The five elements, as axess-benchmark implements them
 
@@ -55,9 +60,12 @@ Hugging Face `fastmachinelearning/wa-hls4ml` (CC-BY-NC 4.0), plus full Vivado pr
 | **test** | **102,484** | **92,933** | scoring; groups dense / conv1d / conv2d |
 | **exemplar** | **887** | **886** | held-out generalization: 7 real scientific architectures |
 
-- **Ground truth** is the post-logic-synthesis `resource_report` + `latency_report`. The
-  C-synthesis estimate `hls_resource_report` sits right next to it in every sample and
-  is not ground truth.
+- **Ground truth** is the post-logic-synthesis `resource_report` for the four resources
+  plus `latency_report` for cycles/II. Per the dataset card, `latency_report` is a
+  post-HLS estimate, since the dataset has no post-synthesis latency. axess-benchmark's
+  README and `data/SCHEMA.md` call both reports post-synthesis, which is wrong for
+  latency. The C-synthesis estimate `hls_resource_report` sits right next to
+  `resource_report` in every sample and is not ground truth.
 - **Missing ground truth is excluded, never imputed**, and coverage is reported. Only
   90.7% of test samples are scored.
 - **`sample_id`** is `meta_data.uuid`, or `meta_data.model_id` for the `2_20` subset
