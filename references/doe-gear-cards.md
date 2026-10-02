@@ -54,16 +54,29 @@ critically, **mandatory live identifier verification** (ORCID/ROR/DOI/OSTI,
 checked against live APIs) before the tool considers a card valid. Two real
 consequences:
 
-- If that generator skill/tool is actually available in the user's
-  environment, prefer running it properly (introspection + live identifier
-  checks) over hand-filling the schema — a hand-filled card cannot satisfy
-  its own validation step.
-- If it isn't available, a hand-filled Data Card following the v1.2 outline
-  is still worth producing, but **every field that tool would normally
-  verify live (identifiers, author roles, org/facility affiliations, exact
-  dates) must be flagged as unverified rather than guessed** — don't let a
-  hand-filled card imply a rigor it doesn't have. `examples/wa-hls4ml/DATA_CARD.md`
-  in this repo is a worked example of exactly that flagging pattern.
+- **Prefer running the generator's workflow properly**, even when it isn't
+  installed as a skill. Clone `AI-ModCon/BaseData_Skills`, read
+  `skills/datacard-generator/SKILL.md`, and follow its steps:
+  1. introspect the data (`scripts/introspect.py`);
+  2. resolve any DOI and apply its provenance gate (a paper DOI is related work,
+     not the dataset's identity);
+  3. ask the user the questions only they can answer: authors and CRediT roles,
+     sponsors, identifiers, AI-usage statuses, science domain;
+  4. verify every ORCID and ROR live;
+  5. write the YAML frontmatter and the narrative body;
+  6. validate with
+     `uv run --with linkml linkml-validate -s scripts/genesis_datacard.yaml -C GenesisDatacardClass <frontmatter.yaml>`.
+
+  `examples/wa-hls4ml/genesis_datacard_wa_hls4ml.md` is a worked example that
+  validates clean. Building it surfaced facts no hand-filled card had: 3 `null`
+  array entries in train/val, record counts that differ from the dataset card's,
+  and a public dCache mirror.
+- **If the workflow can't be run** (no network for the identifier checks, or no
+  way to run the validator), a hand-filled card following the v1.2 outline is
+  still worth producing. But **every field the tool would verify live (identifiers,
+  author roles, org/facility affiliations, exact dates) must be flagged as
+  unverified rather than guessed.** Don't let a hand-filled card imply a rigor it
+  doesn't have.
 
 ## How this fits what this skill already builds
 
@@ -82,7 +95,8 @@ already gathered:
   live FAIR page may ask for more (an ARK or DOI identifier specifically,
   for instance) that this skill's own checklist doesn't currently prompt for.
 
-Generate the card as its own file (e.g. `MODEL_CARD.md`, `AGENT_CARD.md`,
-`DATA_CARD.md`) alongside the benchmark card, using whatever structure the
+Generate the card as its own file (e.g. `MODEL_CARD.md`, `AGENT_CARD.md`, and
+for a data card the generator's own name, `genesis_datacard_<name>.md`) alongside
+the benchmark card, using whatever structure the
 live template actually specifies — copy its section headers, don't invent a
 structure that merely resembles what this doc describes above.

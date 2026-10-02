@@ -30,7 +30,8 @@ Use this file three ways:
 - `BENCHMARK_CARD.md`;
 - a DOE GEAR `MODEL_CARD.md` for the retrained reference GNN (not the paper's Table 4
   checkpoint);
-- a hand-filled `DATA_CARD.md`.
+- a Genesis v1.2 data card, `genesis_datacard_wa_hls4ml.md`, made with the
+  datacard-generator workflow and validated with `linkml-validate`.
 
 The first drafts (2026-08-28) were built from the paper alone and got the points in §B–D
 below wrong. That's a concrete case of why reading isn't verifying.

@@ -82,5 +82,11 @@ benchmark, and folds in what organizing it and running it on NERSC Perlmutter ta
   - `BENCHMARK_CARD.md` follows the skill's card template. It states the ground truth
     (post-synthesis resources, post-HLS latency), coverage, reference results, ontology
     motifs, Table 4 caveats and the published citation;
-  - `DATA_CARD.md` (still a hand-filled v1.2 outline) gets the ground-truth, latency,
-    coverage, revision, mirror and citation fixes.
+  - `DATA_CARD.md`, a hand-filled outline, is replaced by
+    `genesis_datacard_wa_hls4ml.md`. That card has full Genesis v1.2 frontmatter and
+    body, follows the datacard-generator workflow (AI-ModCon/BaseData_Skills@7ef7694),
+    has 16 ORCIDs and every ROR verified live, and passes `linkml-validate`. It records
+    parsed record counts (including 3 null array entries in train/val), per-file
+    sha256 values, and the public Fermilab dCache mirror.
+    `references/doe-gear-cards.md` and SKILL.md now point to the generator workflow
+    instead of hand-filling.

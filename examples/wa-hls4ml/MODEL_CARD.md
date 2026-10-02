@@ -256,7 +256,7 @@ model for FPGA design-cost estimation, not a general-purpose or frontier model.
 | Test | 92,933 | (92933, 51, 18) |
 
 The dataset revision used for training isn't recorded in the release. axess-benchmark's
-`scripts/fetch_data.py` records the revision for each benchmark run. See `DATA_CARD.md`.
+`scripts/fetch_data.py` records the revision for each benchmark run. See `genesis_datacard_wa_hls4ml.md`.
 
 ## Training Procedure
 
@@ -291,7 +291,7 @@ The dataset revision used for training isn't recorded in the release. axess-benc
 
 The benchmark's test split (102,484 networks, 92,933 with post-synthesis ground truth)
 and exemplar split (887 real scientific architectures, 886 with ground truth). Samples
-without ground truth are excluded, never imputed. See `DATA_CARD.md`.
+without ground truth are excluded, never imputed. See `genesis_datacard_wa_hls4ml.md`.
 
 ## Evaluation Procedure
 

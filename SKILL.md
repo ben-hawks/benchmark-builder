@@ -470,10 +470,16 @@ in full first.
    Card, element B for Dataset/Data Card — rather than re-running the
    interview. Match the live template's actual section headers; don't impose
    a structure of your own.
-4. **Save each as its own file** (e.g. `MODEL_CARD.md`, `AGENT_CARD.md`,
-   `DATA_CARD.md`) alongside the benchmark card, and mention the
-   data-card-generator/tool-card tooling the FAIR page links to if the user
-   wants automated generation instead.
+4. **Save each as its own file** (e.g. `MODEL_CARD.md`, `AGENT_CARD.md`)
+   alongside the benchmark card. For a Dataset/Data Card, follow the
+   datacard-generator workflow the FAIR page links to, as described in
+   `references/doe-gear-cards.md`. That workflow:
+   - introspects the data and verifies identifiers live;
+   - asks the user for authors, sponsors and AI-usage statuses;
+   - writes both the frontmatter and the body to `genesis_datacard_<name>.md`;
+   - validates the result with `linkml-validate`.
+
+   Worked example: `examples/wa-hls4ml/genesis_datacard_wa_hls4ml.md`.
 
 ## Adapt into a Codabench Competition Bundle
 
