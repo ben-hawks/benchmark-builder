@@ -188,6 +188,8 @@ problems, all from the catalog's own worked example
   that works in the benchmark's `requirements*.txt`.
 - **Data paths.** The skill writes absolute `data_files` paths into the task YAML. Make them
   relative to the repo, or resolve them from `<P>_DATA` in `utils.py`, before committing.
+- **lm-eval 0.4.13 needs its backend extras.** `pip install lm_eval` alone fails at
+  `--model hf` with `No module named 'accelerate'`; install `lm_eval[hf]` (or `[vllm]`, ...).
 
 See `references/llm-benchmarks.md` for how the task plugs into the pipeline contract.
 
@@ -203,6 +205,14 @@ See `references/llm-benchmarks.md` for how the task plugs into the pipeline cont
   - sample-limited runs: re-run without `--limit`;
   - no verifiable model identity: ask the user, and pass `--model-id`;
   - two runs under one directory: point it at one.
+- **With lm-eval 0.4.13 it records `sample_len` as a metric.** That version adds
+  `sample_len` (and `name`) to each task's results. The parser (at the pinned commit)
+  turns `sample_len` into a result and a `<task>/sample_len` entry in the card's `metrics:`
+  frontmatter. Its validator still passes. Remove the frontmatter entry by hand (its own
+  docs say `metrics:` entries may be pruned by hand). Its validator then reports one
+  `METRICS_MISMATCH` warning, not an error. Leave the generated table rows: hand edits
+  there fail its validator as `UNTRACED`. Alternatively, run the lm-eval version the
+  skill was verified with (0.4.10). Re-check at the latest commit.
 - Its template path (`modcon-bpsw/cards/templates/model-card.md`) is in a separate repo.
   If the user doesn't have it, start from the live GEAR Model Card template
   (`references/doe-gear-cards.md`). Both share the same section headings

@@ -84,6 +84,7 @@ marked *(optional)* depend on the benchmark (see "When the optional pieces apply
 │   ├── fetch_data.py          download + record the exact dataset revision
 │   ├── fetch_weights.py       download + verify sha256 from weights/MANIFEST.json
 │   └── score_all.sh           truth → score every predictions_*.csv → leaderboard → submission zips
+├── tasks/<task>/              (LLM benchmarks) lm-eval task YAMLs, utils.py, plan.md (references/llm-benchmarks.md)
 ├── <hpc>/                     (optional) env.sh, stack.sh, setup.sh, submit.sh, jobs/*.sbatch|*.pbs, profiles/
 ├── codabench/                 (optional)
 │   ├── README.md              mode, phases, ranking, validation record, pre-upload checklist
@@ -286,6 +287,10 @@ and re-commit when anything that changes numbers changes.
   thin wrapper around a pip-installed package. Include any post-processing that's part of
   the published inference procedure.
 - **train.py** *(optional)*: see "Score-only vs includes training".
+- **lm_eval_export.py** + `scripts/predict_lm_eval.sh` *(LLM benchmarks, instead of
+  predict.py)*: run a model through lm-eval and export its per-sample answers as the
+  prediction CSV. Adapt `assets/repo/lm_eval_export.py` and
+  `assets/repo/predict_lm_eval.sh`; see `references/llm-benchmarks.md`.
 - **predict.py**: `--model M --split S` (plus a data or cache directory)
   `--out predictions_M.<ext>`, plus `--device`. Writes a prediction for **every** sample.
   A sample the model can't handle is marked missing and counted, not silently dropped.

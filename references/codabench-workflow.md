@@ -6,6 +6,9 @@ the format details these steps rely on (bundle layout, `competition.yaml` schema
 contract, Docker images, validator tiers). Read both in full before touching any
 Codabench file.
 
+For an LLM benchmark, read `references/llm-benchmarks.md` ("Codabench") as well. It's a
+results submission of per-sample answers, with extra checks in the scoring program.
+
 ## Build the competition bundle
 
 Only start this once the standalone benchmark exists (dataset, metrics, reference
