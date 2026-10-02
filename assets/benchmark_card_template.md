@@ -11,6 +11,22 @@ This benchmark card follows the structure defined by the MLCommons Science Bench
 Ontology (arXiv:2511.05614) — see `references/ontology.md` in the benchmark-builder skill
 for the full definition of each section below.
 
+## Quick start
+
+Copy-pasteable commands from a clean checkout to a leaderboard, for each supported
+environment (local, and each cluster in `docs/<MACHINE>.md`). Follow the pipeline
+contract (`references/repo-structure.md`):
+
+```bash
+# setup: envs, dataset (revision recorded), weights (sha256-checked)
+# python -m pytest tests          # golden outputs before any full run
+# featurize -> [train] -> predict -> bash scripts/score_all.sh
+```
+
+To score your own model, write `<results>/<split>/predictions_<name>.csv` (`sample_id` +
+one column per target, every sample) for each split, then run `scripts/score_all.sh`. It
+also writes your Codabench submission zip.
+
 ---
 
 ## 1. Problem Specification and Constraints
@@ -43,7 +59,7 @@ stratified, held-out-by-construction, etc.), and confirm they're non-overlapping
 | Train | | |
 | Validation | | |
 | Test | | |
-| (optional) Exemplar / held-out generalization set | | |
+| (optional) Held-out generalization set | | |
 
 **Schema.** Document every field/column in a sample, not just a link to "the data." If
 samples are structured records (JSON/Parquet/etc.), list each top-level field and what it
@@ -87,7 +103,13 @@ the code — for a model, this typically means layer structure, hyperparameters,
 procedure, and compute used to train it.
 
 **Results.** The reference solution's own scores on every metric defined above, on every
-split they're computed on. This is what a new submission gets compared against.
+split they're computed on. This is what a new submission gets compared against. Copy the
+table from the committed `reference_results/LEADERBOARD.md`, and state the run's date
+and hardware. Mark auxiliary comparison models (not reference solutions) in italics with
+"(auxiliary)". Follow it with a short "how to read this" paragraph.
+
+**Verification.** One line per reference model on how its inference path was verified
+(per-sample agreement with upstream, golden tests), linking `docs/VALIDATION.md`.
 
 **Requirements.** Hardware and software needed to run the reference solution.
 
@@ -107,8 +129,16 @@ is it for?
 **Background.** The scientific/domain context a non-specialist needs to understand why the
 task matters.
 
+**Known limitations.** Name them: distribution gaps, missing ground truth and its
+coverage, inputs the task leaves out, published results that don't reproduce and why,
+documented fallbacks. A named limitation is worth more than silence about it.
+
 **Citation.** How to cite this benchmark (paper, if one exists; otherwise a preferred
-citation for the dataset/code).
+citation for the dataset/code). Point to `CITATION.cff`. Use the published DOI once it
+exists, with metadata fetched from doi.org.
+
+**License.** State the code license and the dataset license separately; they usually
+differ.
 
 ---
 

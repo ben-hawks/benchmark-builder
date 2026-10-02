@@ -1,0 +1,14 @@
+# Append to the benchmark's .gitignore.
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+# generated Codabench bundle (rebuilt by codabench/build_bundle.py)
+codabench/build/
+# local data, caches, downloaded weights, run outputs (paths come from <P>_* env vars)
+data/raw/
+cache/
+results/
+weights/*.pt
+weights/*.pth
+weights/*.h5

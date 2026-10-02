@@ -1,0 +1,20 @@
+{
+  "source": "https://github.com/<org>/<models-repo>/releases/tag/<tag>",
+  "source_commit": "<full 40-char commit the weights were produced from>",
+  "files": {
+    "<model_a>_final.pt": {
+      "role": "reference",
+      "url": "https://github.com/<org>/<models-repo>/releases/download/<tag>/<model_a>_final.pt",
+      "sha256": "<sha256 of the file>",
+      "bytes": 0,
+      "model": "<ArchitectureClass> (<key hyperparameters>); trained on <exact label field/definition>; <epochs / early stopping>; loads with strict (exact) weight matching into that class"
+    },
+    "<model_b>.h5": {
+      "role": "auxiliary",
+      "url": "<download url>",
+      "sha256": "<sha256>",
+      "bytes": 0,
+      "model": "<what it is and why it is auxiliary, not a reference solution>"
+    }
+  }
+}

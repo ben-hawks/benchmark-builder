@@ -1,202 +1,264 @@
-# wa-hls4ml: FPGA Resource and Latency Surrogate Benchmark
+# wa-hls4ml: FPGA Resource and Latency Estimation Benchmark
 
-> Given a neural network's architecture and its hls4ml hardware-conversion configuration,
-> predict the FPGA hardware resources (LUTs, FFs, DSPs, BRAM) and timing (latency in clock
-> cycles, initiation interval) that hardware synthesis would produce -- without actually
-> running synthesis, which can take hours per model.
+> Given a neural network and its hls4ml conversion configuration, predict the FPGA
+> resources (LUT, FF, DSP, BRAM) and latency (clock cycles, initiation interval) without
+> running the minutes-to-hours HLS + logic-synthesis flow. The runnable benchmark is
+> [axess-benchmark](https://github.com/ben-hawks/axess-benchmark): dataset access, the
+> metric suite, three pretrained reference models, and Slurm workflows. It scores
+> models; it doesn't train them.
 
-**Scientific Motif(s):** High-Energy Physics, FPGA/Hardware Design for Machine Learning
-**AI/ML Motif:** Regression (multi-target)
-**Computing Motif(s) (optional):** Surrogate modeling / simulation replacement
+**Scientific Motif(s):** Computational Science & AI
+**AI/ML Motif:** Regression
+**Computing Motif(s) (optional):** Latency Bound, Utilization Bound
 
 This benchmark card follows the structure defined by the MLCommons Science Benchmarks
-Ontology (arXiv:2511.05614) — see `references/ontology.md` in the benchmark-builder skill
-for the full definition of each section below.
+Ontology (arXiv:2511.05614); see `references/ontology.md` in the benchmark-builder skill.
+It summarizes axess-benchmark at commit `e8cccb1` (2026-10-02), whose `README.md` is the
+authoritative card. The paper is Hawks et al., ACM TRETS 19(2), 2026,
+[doi:10.1145/3787490](https://doi.org/10.1145/3787490).
 
-Source material: Hawks et al., "wa-hls4ml: A Benchmark and Surrogate Models for hls4ml
-Resource and Latency Estimation," ACM Transactions on Reconfigurable Technology and
-Systems (TRETS), 2026, DOI: 10.1145/3787490, arXiv:2511.05615. This card was assembled
-by reading the paper, the `fastmachinelearning/wa-hls4ml-paper` repo, and the
-`fastmachinelearning/wa-hls4ml` dataset card on Hugging Face -- not by interviewing the
-authors -- per this skill's "Gather artifacts before interviewing" workflow. It is a
-dogfooding exercise for this skill's own `references/wa-hls4ml-example.md`, not a
-replacement for that reference doc.
+## Quick start
+
+```bash
+git clone https://github.com/ben-hawks/axess-benchmark.git && cd axess-benchmark
+bash perlmutter/setup.sh                       # login node: venvs, dataset (revision recorded), weights (sha256)
+python -m pytest tests -q                      # golden outputs on 40 real samples
+bash perlmutter/submit.sh -A <nersc_project>   # featurize -> infer (GPU + CPU) -> score_all.sh
+```
+
+To score your own model, write `<results>/{test,exemplar}/predictions_<name>.csv`
+(`sample_id` + the 6 targets, every sample) and run `scripts/score_all.sh`. It also writes
+your Codabench submission zip.
 
 ---
 
 ## 1. Problem Specification and Constraints
 
-**Task.** Given `<a Keras/QKeras model description + its hls4ml conversion config>`,
-produce `<6 regression targets>`: LUT count, FF count, DSP count, BRAM count, latency
-(clock cycles), and initiation interval (II).
+**Task.** Given `(model_config, hls_config)`, produce 6 regression targets: `BRAM`, `DSP`,
+`FF`, `LUT` (absolute counts) and `cycles_max`, `interval_max` (clock cycles).
 
-**Inputs.** A model's architecture (layer types, widths, activation functions) plus its
-hls4ml config: precision (bit width), reuse factor, strategy (Latency/Resource), and I/O
-type. Represented as JSON in the dataset (see `model_config`/`hls_config` fields below).
+**Inputs.**
+- `model_config`: a flat per-layer description of the network;
+- `hls_config`: precision, reuse factor, strategy, I/O type and clock period.
 
-**Outputs.** Six scalar integers/counts per sample: LUTs, FFs, DSPs, BRAM, latency
-(cycles), II (cycles).
+A submission may featurize these however it likes, using only information available
+before synthesis. **No `*_report` field is a valid input.**
 
-**System constraints.** Target FPGA part (e.g. Xilinx Alveo U250/U200), clock period, and
-Vivado/Vitis HLS version are fixed per sample and bound what a prediction means -- they
-are not being optimized, but a valid prediction is only meaningful for the target/version
-it was made against.
+**Outputs.** Six non-negative values per sample, in the column order above.
+
+**System constraints.** Recorded per sample; not predicted and not optimized:
+- target FPGA part (Alveo U250 for most subsets; three parts for `2_20`; U200/U250 for
+  the exemplar set);
+- toolchain versions (Vivado/Vitis, hls4ml);
+- clock period, I/O type and strategy.
 
 ---
 
 ## 2. Dataset
 
-**Summary.** 683,176 fully synthesized samples (608,679 fully-connected, 31,278 1D-conv,
-43,219 2D-conv networks), each run all the way through Vivado/Vitis HLS synthesis to get
-ground-truth resource/latency numbers -- not simulated or estimated.
+**Summary.** [fastmachinelearning/wa-hls4ml](https://huggingface.co/datasets/fastmachinelearning/wa-hls4ml)
+on Hugging Face, also mirrored on the Fermilab American Science Cloud Data Platform. The
+full Vivado projects for every sample are in `-projects`. It was generated by the open
+[wa-hls4ml-search](https://github.com/ben-hawks/wa-hls4ml-search) pipeline.
 
-**Splits.**
+**Splits.** Train, validation and test are 683,176 synthetic networks across 7 generation
+subsets. The exemplar set is disjoint by construction.
 
-| Split | Size | Purpose |
-|---|---|---|
-| Train | 478,220 | Training |
-| Validation | 102,472 | Model selection |
-| Test | 102,484 | Held-out evaluation, same distribution as train |
-| Exemplar (held-out generalization set) | 887 | Real scientific-application architectures (particle physics, anomaly detection, image processing) -- tests generalization beyond the synthetic training distribution |
+| Split | Size | With ground truth | Purpose |
+|---|---|---|---|
+| Train | 478,220 | 433,674 | for submitters |
+| Validation | 102,472 | — | for submitters |
+| **Test** | **102,484** | **92,933** | scoring; reported as dense / conv1d / conv2d |
+| **Exemplar** | **887** | **886** | held-out generalization: 7 real scientific architectures (Jet, Quarks, Anomaly, Bipc, Cookie, AutoMLP, Particle) |
 
-**Schema.** Each sample is one JSON object with 9 fixed top-level fields: `meta_data`
-(identifier, model name, project archive reference), `model_config` (Keras/QKeras
-representation), `hls_config` (hls4ml conversion parameters), `resource_report`
-(post-logic-synthesis component counts), `hls_resource_report` (post-HLS resource
-estimates), `latency_report` (timing estimates), `target_part`, `vivado_version`,
-`hls4ml_version`.
+**Ground truth.**
+- **Resources** (BRAM/DSP/FF/LUT) come from the post-logic-synthesis `resource_report`.
+- **Latency** (cycles/II) comes from `latency_report`, the post-HLS latency estimate. The
+  dataset has no post-synthesis latency.
+- `hls_resource_report`, the C-synthesis resource *estimate*, is **not** ground truth,
+  even though it sits beside `resource_report` in every sample.
+- Samples without a `resource_report` (9,551 test, 1 exemplar) are **excluded, never
+  imputed**. Coverage is reported with every result.
 
-**Access.** Hosted on Hugging Face as `fastmachinelearning/wa-hls4ml` (4.98 GB), plus a
-companion `-projects` dataset with full synthesis logs, under CC-BY-NC 4.0. Versioned via
-the Hugging Face dataset's own revision history.
+**Schema.** Each sample is one JSON record with `meta_data`, `model_config`, `hls_config`,
+`resource_report`, `hls_resource_report`, `latency_report`, `target_part`,
+`vivado_version` and `hls4ml_version`. The `2_20` subset uses `backend`/`backend_version`
+in place of `vivado_version`. `sample_id` is `meta_data.uuid`, or `meta_data.model_id` for
+`2_20`, and it's unique per split. Per-field detail is in axess-benchmark's
+`data/SCHEMA.md`.
+
+**Access.** Hugging Face, CC-BY-NC 4.0. Versioned through Hugging Face revisions;
+`scripts/fetch_data.py` records the exact revision of each run.
 
 **FAIR checklist:**
-- [x] Findable — every sample carries a `meta_data` identifier; the dataset itself has a
-      stable HF dataset ID and a DOI via the paper (10.1145/3787490)
-- [x] Accessible — Hugging Face `datasets` library, open access, no login required
-- [x] Interoperable — JSON records with a documented, fixed 9-field schema (above);
-      loadable directly via `datasets.load_dataset`
-- [x] Reusable — versioned on HF; generation code (`wa-hls4ml-search`, part of
-      `wa-hls4ml-paper`) is public under Apache 2.0, so the pipeline that produced it is
-      itself reproducible
+- [x] Findable: unique per-sample IDs and a dataset card
+- [x] Accessible: public Hugging Face hub plus a mirror, a named license, standard
+      `huggingface_hub` access
+- [x] Interoperable: plain JSON with a documented schema
+- [x] Reusable: versioned, with the generation pipeline open source
 
-**Bounded-ness.** No augmentation/enrichment of the dataset is expected for a submission
--- a submission trains/evaluates against the splits as published.
+**Bounded-ness.** No augmentation of the evaluation splits. Submitters may train on any
+data, and should document what they used in `SUBMISSION.md`.
 
 ---
 
 ## 3. Performance Metric(s)
 
+Computed per target, over all scored samples and per group (test: dense/conv1d/conv2d;
+exemplar: per architecture). Implementation: `src/wa_hls4ml_bench/score.py`, paper §3.2.
+
 | Metric | Formula / definition | What it captures | Computed on |
 |---|---|---|---|
-| R² | Coefficient of determination | Overall variance captured | Every target, per subset |
-| SMAPE | `200%/n * Σ(\|y-ŷ\| / (\|y\|+\|ŷ\|+ε))`, ε = smallest strictly positive value the variable can take (1, since these are integer counts) — explicit division-by-zero handling | Relative accuracy, comparable across targets of very different scale (LUTs vs. cycles) | Every target, per subset |
-| RMSE | Standard root-mean-square error | Magnitude of error, sensitive to outliers | Every target, per subset |
-| RPE (visualization only) | Relative percent error per sample, shown as a box plot | Reveals systematic over/under-prediction a scalar metric hides | Per target variable |
+| R² | `1 − Σ(y−ŷ)² / Σ(y−ȳ)²`; N/A for a zero-variance group | variance explained (maximize) | every target, every group |
+| SMAPE | `200%/n · Σ |y−ŷ| / (|y|+|ŷ|+1)` | relative error across scales; ε = 1 makes y = ŷ = 0 score 0 (minimize) | every target, every group |
+| RMSE | `sqrt(mean((y−ŷ)²))` | native-unit error, dominated by large designs (minimize) | every target, every group |
+| RPE | `(y−ŷ)/(y+1)·100%` per sample | bias; positive means under-prediction (box plot only) | every target |
 
-Metrics are computed **per target variable** (BRAM/DSP/FF/LUT/Cycles/II) and **per
-dataset subset** (all/dense/conv1d/conv2d, and per exemplar architecture) — not a single
-aggregate number. This is a single-dimensional regression-quality benchmark (no Pareto
-tradeoff between targets is imposed; each target is scored independently).
+- Report all three scalar metrics together: RMSE alone favors models that under-predict
+  large designs.
+- Predictions must be finite, and coverage should be complete.
+- This isn't a Pareto benchmark: the §1 constraints are inputs, not objectives.
+- **The paper's published numbers only reproduce with SMAPE ε = 1e-8**, as in its
+  training code, not the ε = 1 its Eq. 2 states. The benchmark implements the stated
+  ε = 1.
 
 ---
 
 ## 4. Reference Solution
 
-**Summary.** Three reference solutions, positioned as a strength-of-evidence ladder, all
-evaluated with the identical metric suite on the identical test/exemplar splits:
+**Summary.** Three pretrained reference solutions, positioned as a ladder of increasingly
+structured priors, plus one auxiliary comparison model. All run through the same
+`predict → score_all.sh` pipeline on the same samples.
 
-1. **Baseline MLP** (from prior work, rule4ml) — code in
-   `fastmachinelearning/wa-hls4ml-paper`'s `rule4ml` submodule
-   (`notebooks/benchmark.ipynb`, `notebooks/train.ipynb`), GPLv3.
-2. **GNN** — 5-layer GATv2 (graph attention network), code in the `wa_hls4ml_models`
-   submodule, CC-BY-NC 4.0.
-3. **Transformer** — 2 encoder blocks with per-layer tokenization, same submodule/license.
+| | Baseline MLP | GNN | Transformer | *rule4ml GNN (auxiliary)* |
+|---|---|---|---|---|
+| Weights | bundled in `rule4ml==0.2.0` | release `resource-report-retrain`, sha256 `ac8bbfbf…` | same release, sha256 `5e8726c3…` | bundled in rule4ml |
+| Architecture | 6 per-target MLPs | 5× GATv2 (5 heads × 512), 54.5 M params | 2-block encoder (8 heads, d = 512), 3.2 M params | 6 per-target GIN models |
+| Trained on | post-synthesis labels | post-synthesis labels (**retrained**) | post-synthesis labels (**retrained**) | post-synthesis labels |
+| Inference | CPU, TensorFlow | CPU or 1 GPU | CPU or 1 GPU | CPU, PyTorch |
 
 **Architecture / method.**
-- Baseline MLP: 200 training epochs, Adam optimizer, MSLE loss.
-- GNN (GATv2, 5 layers): attention-based message passing over the model's layer graph;
-  trained on an NVIDIA A10.
-- Transformer (2 encoder blocks): per-layer tokenization of the model architecture;
-  trained on an NVIDIA A100.
+- The GNN and Transformer are the paper's architectures **retrained on post-synthesis
+  labels**. The checkpoints behind paper Table 4 were trained on `hls_resource_report`,
+  proven on data: 100% of their training label rows match it, and 0% match
+  `resource_report`. Scored against this benchmark's ground truth, those checkpoints do
+  worse than predicting the mean.
+- Inference includes:
+  - vendored, bit-identical preprocessing;
+  - shipped normalization statistics;
+  - a cap at the largest training label.
+- Verified per sample against the release's own predictions: ≤2.8e-4 relative.
+- Details are in axess-benchmark's `reference_solution/README.md`; the GNN also has a
+  model card, `MODEL_CARD.md`.
 
-**Results.** Reported in the paper's Table 4 (main test set, per-subset breakdown) and
-Table 5 (exemplar set) across all six targets and all three metrics for all three
-models -- e.g. the baseline MLP performs well on dense-layer targets but is
-specifically weak on DSP prediction, a finding only visible because of the per-subset
-breakdown.
+**Results** (axess-benchmark `reference_results/`, workstation CPU, 2026-10-02; a
+Perlmutter A100 run matched to ≤2.4e-4 relative):
 
-**Requirements.** Python; GNN/Transformer need an NVIDIA GPU (A10/A100 used for training,
-inference is lighter); baseline MLP usable via the `rule4ml` PyPI package (v0.2.0+).
+| R² (mean of 6 targets) | Test (n = 92,933) | Exemplar (n = 886) |
+|---|---|---|
+| Baseline MLP | 0.319 | 0.248 |
+| GNN | 0.780 | −1.956 |
+| Transformer | **0.809** | −0.517 |
+| *rule4ml GNN (auxiliary)* | *0.549* | *−1.910* |
+
+| Test R² | BRAM | DSP | FF | LUT | Cycles | II |
+|---|---|---|---|---|---|---|
+| Baseline MLP | 0.32 | 0.03 | 0.20 | 0.49 | 0.54 | 0.34 |
+| GNN | **0.64** | 0.56 | **0.93** | 0.90 | 0.81 | 0.83 |
+| Transformer | 0.35 | **0.83** | 0.93 | **0.90** | **0.93** | **0.92** |
+
+**How to read this.**
+- On the test set, the Transformer is the best overall model, with the GNN close behind.
+  Both are far ahead of the MLP.
+- None of the models predicts BRAM well. Most of the BRAM error comes from the 1.5% of
+  test samples in the multi-part `2_20` subset.
+- Every model degrades sharply on the exemplar set. Out-of-distribution generalization is
+  the open problem this benchmark measures.
+
+**Requirements.** Python ≥ 3.10.
+- PyTorch + PyTorch Geometric for the GNN/Transformer.
+- A **separate** TensorFlow environment for rule4ml.
+- CPU is enough for everything; one GPU speeds up the GNN and Transformer.
 
 ---
 
 ## 5. Documentation and Reproducible Protocol
 
 **Reproduction steps.**
-1. `git clone --recurse-submodules` `fastmachinelearning/wa-hls4ml-paper` (submodules are
-   >1 GB; `git submodule update --init --recursive` if cloned without `--recurse-submodules`).
-2. Dataset generation: see `wa-hls4ml-search` submodule's own README, or skip generation
-   and load the published dataset directly from Hugging Face.
-3. Baseline MLP: `rule4ml/notebooks/train.ipynb` then `benchmark.ipynb`.
-4. GNN/Transformer: see `wa_hls4ml_models` submodule's own README for training/eval
-   entry points.
+1. `bash perlmutter/setup.sh` builds pinned environments (`requirements*.txt` on a NERSC
+   PyTorch module), downloads the dataset with its revision recorded, and fetches the
+   weights, checking them by sha256 against `weights/MANIFEST.json`.
+2. `python -m pytest tests` checks golden outputs on 40 real fixture samples.
+3. `bash perlmutter/submit.sh -A <project>` featurizes, runs inference and scores. It
+   writes `LEADERBOARD.md`, per-model `METRICS.md` and `metrics.json`, RPE plots, and
+   Codabench zips.
+4. Compare the run against `reference_results/`.
 
-**Environment.** No single top-level environment file covers all three reference
-solutions -- each submodule (`rule4ml`, `wa_hls4ml_models`, `wa-hls4ml-search`) documents
-its own dependencies separately. This is a real, self-acknowledged gap (see Score
-below), not glossed over here.
+Running elsewhere: any Python 3.10+ environment, using the module commands in
+`docs/PERLMUTTER.md`.
 
-**Motivation.** Hardware synthesis (Vivado/Vitis HLS) for a single FPGA design can take
-hours; a fast, accurate surrogate model lets researchers iterate on architecture/
-quantization choices without paying that cost for every candidate design, which is the
-practical bottleneck this benchmark exists to address.
+**Environment.** `requirements.txt` (torch stack) and `requirements-mlp.txt`
+(TensorFlow/rule4ml) are kept separate, plus `pyproject.toml` with an extra per model
+family. `docs/VALIDATION.md` records how each reference solution was verified.
 
-**Background.** hls4ml converts trained Keras/QKeras models into FPGA firmware (HLS C++)
-for real-time inference in physics detectors and other latency-critical scientific
-instruments. Choosing an architecture and hls4ml config that fits a hardware resource
-budget currently requires expensive trial-and-error synthesis runs; this benchmark
-targets the surrogate-model problem of predicting synthesis outcomes directly.
+**Motivation.**
+- Codesign loops need resource and latency numbers for many candidate designs, but each
+  synthesis run takes minutes to hours and sometimes fails.
+- A surrogate answers in about 1 ms, which makes much wider design-space exploration
+  possible.
+- wa-hls4ml replaces per-paper private datasets with a common, large dataset and a common
+  evaluation protocol (paper §1, Table 1).
 
-**Citation.**
+**Background.** hls4ml compiles trained neural networks into FPGA firmware through
+high-level synthesis. It's used for latency- and power-constrained scientific edge
+systems such as LHC triggers.
+
+**Known limitations.**
+- **Coverage:** only 90.7% of test samples have post-synthesis ground truth; the rest are
+  excluded.
+- **Latency labels** are post-HLS estimates, not post-synthesis measurements.
+- **Out of distribution:** the exemplar distribution barely overlaps the synthetic data,
+  so every model degrades there.
+- **Target part:** the target FPGA part isn't a model input, which hurts BRAM on `2_20`.
+- **Bipc:** the 119 Bipc exemplar samples need a documented feature-extraction fallback,
+  and the GNN handles them badly.
+- **Paper Table 4** isn't reproduced by the reference models and isn't comparable to
+  this benchmark's scores:
+  - it mixes ground truths (MLP: post-synthesis; GNN/Transformer: HLS estimates);
+  - it prints dense DSP R² as −0.74 where its own RMSE implies −111.74.
+- **Generated architectures** have no skip connections and a limited reuse-factor range.
+
+**Citation.** See axess-benchmark's `CITATION.cff`.
+
 ```bibtex
-@misc{hawks2025wahls4mlbenchmarksurrogatemodels,
-      title={wa-hls4ml: A Benchmark and Surrogate Models for hls4ml
-      Resource and Latency Estimation},
-      author={Benjamin Hawks and Jason Weitz and others},
-      year={2025},
-      eprint={2511.05615},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2511.05615}
+@article{hawks2026wahls4ml,
+  title={wa-hls4ml: A Benchmark and Surrogate Models for hls4ml Resource and Latency Estimation},
+  author={Hawks, Benjamin and Weitz, Jason and Demler, Dmitri and Tame-Narvaez, Karla and Plotnikov, Dennis and Rahimifar, Mohammad Mehdi and Rahali, Hamza Ezzaoui and Therrien, Audrey C. and Sproule, Donovan and Khoda, Elham E. and Smith, Keegan A. and Marroquin, Russell and Di Guglielmo, Giuseppe and Tran, Nhan and Duarte, Javier and Loncar, Vladimir},
+  journal={ACM Transactions on Reconfigurable Technology and Systems},
+  volume={19}, number={2}, pages={1--29}, year={2026},
+  publisher={Association for Computing Machinery},
+  doi={10.1145/3787490}, url={https://doi.org/10.1145/3787490}
 }
 ```
+
+**License.**
+- Benchmark code: Apache-2.0.
+- Dataset: CC-BY-NC 4.0.
+- Surrogate models: CC-BY-NC 4.0 per the paper repository.
+- rule4ml: GPL-3.0, a pip dependency that isn't vendored.
 
 ---
 
 ## Submission Guidelines
 
-Adapting the paper's own three-tier framing (Section 3.1):
-- **Required**: predicted values for all six targets on the test and exemplar sets, plus
-  R²/SMAPE/RMSE computed per-target and per-subset.
-- **Strongly recommended**: architecture/hyperparameter description, shared code and
-  trained weights, inference hardware + timing.
-- **Suggested**: RPE box plots per target; documentation of any additional training data
-  or constraints used.
+Following the paper's three tiers (§3.1; axess-benchmark `SUBMISSION.md`):
+- **Required:** predictions for every test and exemplar sample, scored with
+  `score_all.sh` (R²/SMAPE/RMSE per target and per group, with coverage).
+- **Strongly recommended:** architecture and hyperparameters, shared code and weights,
+  inference hardware and timing.
+- **Suggested:** RPE box plots, and documentation of any additional training data or
+  constraints.
 
-> See `assets/submission_report_template.md` in the benchmark-builder skill for the full
-> report format.
-
----
-
-## Known limitations (stated, not hidden)
-
-- The exemplar set's distribution differs meaningfully from the synthetic
-  training/test distribution (real scientific architectures vs. randomly generated
-  ones) — the paper's own "Summary and Outlook" names this as limiting how far
-  generalization claims can be pushed.
-- RMSE "may reflect a tendency towards smaller absolute predictions rather than better
-  accuracy" per the paper's own discussion — a known blind spot of that specific metric,
-  which is why R²/SMAPE are reported alongside it rather than RMSE alone.
-- No single top-level environment/dependency file spans all three reference solutions
-  (see Documentation section above).
+Codabench: a results-submission bundle (upload `predictions_test.csv` +
+`predictions_exemplar.csv`), built by `codabench/build_bundle.py` and ranked on mean test
+R². The pipeline writes each model's upload-ready zip.

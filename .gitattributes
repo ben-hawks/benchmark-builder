@@ -1,0 +1,6 @@
+# Shell templates get copied into benchmarks and run on Linux clusters: never CRLF,
+# even on a Windows checkout with core.autocrlf=true.
+*.sh text eol=lf
+*.sbatch text eol=lf
+*.png binary
+*.zip binary

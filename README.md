@@ -12,13 +12,28 @@ submission.
 - **Interviews you** about the five elements a benchmark needs (problem specification,
   dataset, performance metrics, reference solution, documentation) — but checks your
   repo/papers/code for answers *before* asking, and only interviews genuine gaps.
+- **Generates a reproducible benchmark repository.** The recommended layout (a strong
+  default, not a requirement) is generalized from
+  [axess-benchmark](https://github.com/ben-hawks/axess-benchmark):
+  - an installable package;
+  - one `fetch → cache → [train] → predict → score_all.sh` pipeline that every model
+    (and every participant) plugs into;
+  - sha256-checked weights;
+  - golden-output tests;
+  - a validation log and committed reference results;
+  - generic Slurm jobs tuned to the machines you name.
+- **Verifies the reference solution** before trusting it: model identity, the label it
+  was trained on vs the label that's scored, the full inference procedure, and
+  per-sample agreement with upstream.
 - **Scores the result** against the ontology's real six-category, 27-point rating
   rubric, with a deterministic scorer script, so the score is reproducible and
-  evidence-backed rather than a vibe.
-- **Packages it for Codabench**: `competition.yaml`, ingestion/scoring programs, an
-  example submission, and a four-tier validator (including a no-Docker local dry run)
-  that catches the most common way a bundle breaks — a leaderboard column key that
-  doesn't match what the scoring program actually outputs.
+  evidence-backed rather than a vibe. The scorer flags evidence that has probably gone
+  stale.
+- **Packages it for Codabench.** The bundle is built from the benchmark's own truth
+  function (`build_bundle.py`), and the benchmark pipeline emits upload-ready submission
+  zips. A four-tier validator (including a no-Docker local dry run) catches the most
+  common way a bundle breaks: a leaderboard column key that doesn't match what the
+  scoring program actually outputs.
 
 ## Installing
 
@@ -37,8 +52,11 @@ or, for a single project rather than every session, into that project's
 SKILL.md                       the actual workflow Claude follows
 references/
   ontology.md                  condensed ontology + rubric spec (arXiv:2511.05614)
-  wa-hls4ml-example.md         a real benchmark scored against the rubric, as a pattern
-  codabench.md                 Codabench bundle format, verified against real examples
+  repo-structure.md            recommended benchmark repo layout + pipeline contract (from axess-benchmark)
+  hpc.md                       generic Slurm, per-machine questions, Perlmutter worked profile
+  wa-hls4ml-example.md         axess-benchmark: the worked example and the lessons it taught
+  codabench.md                 Codabench bundle format, build pattern, scoring contract
+  mlcommons-corpus-format.md, doe-gear-cards.md
 scripts/
   metrics.py                   regression/classification metric building blocks
   score_benchmark.py           deterministic rubric scorer
@@ -46,9 +64,16 @@ scripts/
   generate_codabench_example_data.py
 assets/
   rubric_template.yaml, benchmark_card_template.md, submission_report_template.md
+  repo/                        snippets to adapt: score_all.sh, submission.py, report.py, fetch_weights.py,
+                               MANIFEST.json, golden test, CITATION.cff, .gitattributes
+  hpc/slurm/                   env.sh, stack.sh (benchmark stack hooks), setup.sh, submit.sh, jobs/*.sbatch,
+                               profiles/{perlmutter,generic}.sh (machine facts)
   codabench/
     Dockerfile.template, Dockerfile.gpu.template
-    example_bundle/            a complete, self-tested worked Codabench bundle
+    build_bundle.py            template: bundle from the benchmark's own truth function
+    example_bundle/            self-tested code-submission bundle
+    results_example/           self-tested results-submission bundle (build_bundle.py pattern)
+CHANGELOG.md
 ```
 
 ## Background

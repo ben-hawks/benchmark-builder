@@ -1,0 +1,74 @@
+# Toy Linear Regression, RESULTS submission -- the benchmark-builder skill's worked example
+# of the axess-benchmark pattern: hand-written bundle_src/ (this directory, versioned) plus
+# generated files added by ../build_bundle.py (reference_data/, solution/,
+# starting_kit/sample_submission.zip, starting_kit/*_sample_ids.csv). Validate the BUILT
+# bundle (build/bundle/), not this directory. Don't upload this one as-is.
+version: 2
+title: Toy Linear Regression (benchmark-builder results-submission example)
+description: Minimal worked example of a Codabench results-submission bundle -- upload predictions of y for two splits.
+image: logo.png
+registration_auto_approve: True
+docker_image: codalab/codalab-legacy:py312
+
+terms: pages/terms_and_conditions.md
+pages:
+  - title: Overview
+    file: pages/overview.md
+  - title: Evaluation
+    file: pages/evaluation.md
+
+# Results submission: no ingestion program. One task scores both splits, so a single
+# upload is ranked on the primary split and reports the held-out split alongside.
+tasks:
+  - index: 0
+    name: Predict y
+    description: Score test-split and holdout-split predictions against hidden ground truth.
+    reference_data: reference_data/
+    scoring_program: scoring_program/
+
+# The reference solution's predictions double as the example submission:
+# starting_kit/sample_submission.zip is solution/ zipped flat.
+solutions:
+  - index: 0
+    tasks:
+      - 0
+    path: solution/
+
+phases:
+  - index: 0
+    name: Open Benchmark
+    description: Open, ongoing benchmark.
+    start: 1-1-2026
+    max_submissions_per_day: 5
+    execution_time_limit: 600
+    tasks:
+      - 0
+    starting_kit: starting_kit
+
+# Rank on a bounded metric of the primary split. Held-out R^2 is unbounded below, so it
+# is reported, not used as the primary key.
+leaderboards:
+  - title: Results
+    key: main
+    submission_rule: "Add_And_Delete_Multiple"
+    columns:
+      - title: Test R2
+        key: test_r2
+        index: 0
+        sorting: desc
+        precision: 4
+      - title: Test RMSE
+        key: test_rmse
+        index: 1
+        sorting: asc
+        precision: 4
+      - title: Holdout R2
+        key: holdout_r2
+        index: 2
+        sorting: desc
+        precision: 4
+      - title: Holdout RMSE
+        key: holdout_rmse
+        index: 3
+        sorting: asc
+        precision: 4

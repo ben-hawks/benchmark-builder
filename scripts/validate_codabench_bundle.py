@@ -10,13 +10,17 @@ Four tiers, each gated on the previous one making sense to attempt:
      every path it references actually exists, leaderboard columns are internally
      consistent, every program directory has a metadata.yaml with a `command`.
   2. Submission contract -- runs if --submission is given. Determines code-submission
-     vs results-submission mode for the target task, reads the actual ingestion/scoring
-     program source to figure out what the submission zip must contain, and checks it.
+     vs results-submission mode for the target task, then determines what the submission
+     zip must contain: from a declared module-level `SUBMISSION_FILES = [...]` in the
+     ingestion (code) or scoring (results) program if there is one (parsed, not imported),
+     otherwise by a regex over the program source. Then checks the zip.
   3. Local functional dry run -- runs if --submission is given AND the relevant
      programs use the CODABENCH_ROOT override (see references/codabench.md) rather than
      hardcoding /app. No Docker needed: runs the real ingestion/scoring commands as
      subprocesses against a temp directory, and checks the resulting scores.json has
-     every key the leaderboard expects.
+     every key the leaderboard expects. It runs on the HOST Python, so a missing host
+     package (numpy, pandas, ...) is reported as "host missing dependency", not as a
+     bundle failure.
   4. Docker faithful run -- best-effort, only attempted with --docker and a reachable
      Docker daemon. Resolves the image first (builds the bundle's own Dockerfile if it
      has one, otherwise uses/pulls competition.yaml's docker_image), then mounts the
@@ -34,10 +38,11 @@ validator.
 Usage:
     python validate_codabench_bundle.py <bundle_dir> [--submission sub.zip]
         [--task-index 0] [--docker] [--dockerfile PATH] [--no-build]
-        [--gpus] [--rm-built-image]
+        [--gpus] [--rm-built-image] [--docker-host URL] [--timeout SECONDS]
 """
 
 import argparse
+import ast
 import json
 import os
 import re
@@ -65,9 +70,10 @@ DATE_FORMATS = [
 
 
 class Issue:
-    def __init__(self, level, message):
+    def __init__(self, level, message, halt=False):
         self.level = level  # "error" | "warning" | "info"
         self.message = message
+        self.halt = halt  # stop this tier without it counting as an error
 
     def __str__(self):
         return f"[{self.level.upper()}] {self.message}"
@@ -204,6 +210,29 @@ def find_task(comp, task_index):
     return None
 
 
+def declared_submission_files(program_dir):
+    """The declared contract: a module-level `SUBMISSION_FILES = [...]` (list/tuple of string
+    literals) in any .py file of the program. Read with ast, never imported, so the
+    program's own dependencies don't need to be installed. Returns (names, file) or
+    (None, None) when nothing is declared."""
+    for py_file in sorted(Path(program_dir).glob("*.py")):
+        try:
+            tree = ast.parse(py_file.read_text(encoding="utf-8", errors="ignore"))
+        except SyntaxError:
+            continue
+        for node in tree.body:
+            targets = node.targets if isinstance(node, ast.Assign) else (
+                [node.target] if isinstance(node, ast.AnnAssign) and node.value is not None else [])
+            if any(isinstance(t, ast.Name) and t.id == "SUBMISSION_FILES" for t in targets):
+                try:
+                    value = ast.literal_eval(node.value)
+                except ValueError:
+                    continue
+                if isinstance(value, (list, tuple, set)) and all(isinstance(v, str) for v in value):
+                    return set(value), py_file.name
+    return None, None
+
+
 def guess_code_submission_files(ingestion_dir):
     """Heuristic: find `from X import Y` in the ingestion program, implying the
     submission zip must contain X.py at its root."""
@@ -244,26 +273,35 @@ def check_submission_contract(bundle_dir, comp, task_index, submission_zip):
 
     ingestion_path = task.get("ingestion_program")
     if ingestion_path:
-        expected = guess_code_submission_files(bundle_dir / ingestion_path)
-        if not expected:
-            issues.append(Issue("info", "could not determine expected submission filename from ingestion program source (no 'from X import Y' found) -- skipping contract check"))
-        else:
-            missing = expected - root_files
-            if missing:
-                issues.append(Issue("error", f"submission is missing file(s) the ingestion program imports: {missing} (found at root: {root_files})"))
-            else:
-                issues.append(Issue("info", f"submission provides expected file(s): {expected}"))
+        program_dir = bundle_dir / ingestion_path
+        heuristic, what = guess_code_submission_files, "file(s) the ingestion program imports"
     else:
-        scoring_path = task["scoring_program"]
-        expected = guess_results_submission_files(bundle_dir / scoring_path)
+        program_dir = bundle_dir / task["scoring_program"]
+        heuristic, what = guess_results_submission_files, "result file(s)"
+
+    # Prefer the declared contract; fall back to the source-regex heuristic.
+    declared, declared_in = declared_submission_files(program_dir)
+    if declared is not None:
+        expected, source = declared, f"declared SUBMISSION_FILES in {declared_in}"
+        guessed = heuristic(program_dir)
+        if guessed and not guessed <= declared:
+            issues.append(Issue("warning", f"{declared_in}: SUBMISSION_FILES {sorted(declared)} doesn't list {sorted(guessed - declared)}, which the program's source appears to read -- keep the declared contract in sync with the code"))
+    else:
+        expected, source = heuristic(program_dir), "heuristic: source regex"
         if not expected:
-            issues.append(Issue("info", "could not determine expected result filename from scoring program source -- skipping contract check"))
-        else:
-            missing = expected - root_files
-            if missing:
-                issues.append(Issue("error", f"submission is missing expected result file(s): {missing} (found at root: {root_files})"))
-            else:
-                issues.append(Issue("info", f"submission provides expected file(s): {expected}"))
+            hint = ("no 'from X import Y' found" if ingestion_path
+                    else "no literal os.path.join(<prediction/res dir>, '<name>') found")
+            issues.append(Issue("info", f"could not determine expected submission filename(s) ({hint}) -- skipping contract check. Declare them as a module-level SUBMISSION_FILES = [...] in the program to make this check exact (references/codabench.md)"))
+            return issues
+
+    missing = expected - root_files
+    if missing:
+        # A single wrapping folder is a common packaging slip; name it if that's the cause.
+        nested_names = {n.rstrip("/").rsplit("/", 1)[-1] for n in nested}
+        hint = " (they're inside a folder -- zip the files at the archive root)" if missing <= nested_names else ""
+        issues.append(Issue("error", f"submission is missing expected {what}: {sorted(missing)}{hint} (found at root: {sorted(root_files)}; expected from {source})"))
+    else:
+        issues.append(Issue("info", f"submission provides expected file(s): {sorted(expected)} ({source})"))
 
     return issues
 
@@ -314,10 +352,32 @@ def run_program(program_dir, root_dir, label, timeout=DEFAULT_EXECUTION_TIMEOUT)
         issues.append(Issue("error", f"{label} did not finish within {timeout}s -- pass --timeout for a benchmark whose programs need longer than the default (real training, not a toy example's near-instant fit)"))
         return issues
     if result.returncode != 0:
-        issues.append(Issue("error", f"{label} exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"))
+        missing = host_missing_module(result.stderr, program_dir, label)
+        if missing:
+            issues.append(missing)
+        else:
+            issues.append(Issue("error", f"{label} exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"))
     else:
         issues.append(Issue("info", f"{label} ran successfully"))
     return issues
+
+
+# Packages the stock codalab-legacy images ship (references/codabench.md, Docker table).
+# A tier 3 ImportError for one of these means the HOST Python lacks it, not that the
+# bundle is broken -- tier 3 runs on the host, tier 4 in the declared image.
+COMMON_IMAGE_PACKAGES = {"numpy", "pandas", "scipy", "sklearn", "yaml", "matplotlib", "numba", "psutil"}
+
+
+def host_missing_module(stderr, program_dir, label):
+    """Turn a ModuleNotFoundError from a tier 3 run into a precise issue, or None."""
+    m = re.search(r"ModuleNotFoundError: No module named '([^'.]+)", stderr or "")
+    if not m:
+        return None
+    name = m.group(1)
+    vendored = (Path(program_dir) / f"{name}.py").exists() or (Path(program_dir) / name).is_dir()
+    if name in COMMON_IMAGE_PACKAGES and not vendored:
+        return Issue("warning", f"tier 3 not verified: host Python is missing dependency '{name}' (a host problem, not a scoring failure). Install it on the host (pip install {name}) and re-run, or run tier 4 (--docker), which uses the declared image", halt=True)
+    return Issue("error", f"program could not import '{name}'. If it's a third-party package, the host Python lacks it (pip install it, or run tier 4 with --docker) and the declared docker_image must provide it; if it's meant to be vendored, add {name}.py to the {label}'s directory -- programs are uploaded standalone and can't import from outside their own directory")
 
 
 
@@ -367,7 +427,7 @@ def local_dry_run(bundle_dir, comp, task_index, submission_zip, timeout=None):
                 zf.extractall(ingested)
             run_issues = run_program(ingest_root / "program", ingest_root, "ingestion program", timeout=effective_timeout)
             issues += run_issues
-            if any(i.level == "error" for i in run_issues):
+            if any(i.level == "error" or i.halt for i in run_issues):
                 return issues
             res_dir_source = ingest_root / "output"
         else:
@@ -384,7 +444,7 @@ def local_dry_run(bundle_dir, comp, task_index, submission_zip, timeout=None):
         (score_root / "output").mkdir(parents=True)
         run_issues = run_program(score_root / "program", score_root, "scoring program", timeout=effective_timeout)
         issues += run_issues
-        if any(i.level == "error" for i in run_issues):
+        if any(i.level == "error" or i.halt for i in run_issues):
             return issues
 
         scores_path = score_root / "output" / "scores.json"
@@ -422,11 +482,21 @@ def docker_available():
         # dev box where Docker Desktop simply isn't started.
         stderr = (result.stderr or "").strip().splitlines()
         detail = stderr[-1] if stderr else f"exit {result.returncode}"
-        return False, f"docker daemon not reachable ({detail})"
+        return False, f"docker daemon not reachable ({detail}){DOCKER_TROUBLESHOOTING}"
     except FileNotFoundError:
         return False, "docker is not installed / not on PATH"
     except subprocess.TimeoutExpired:
-        return False, "docker info timed out after 15s"
+        return False, f"docker info timed out after 15s{DOCKER_TROUBLESHOOTING}"
+
+
+# "Not reachable" is often the client-to-engine bridge, not the engine. Seen with Rancher
+# Desktop on Windows: "timed out dialing Hyper-V socket" while dockerd inside the VM was
+# healthy; tier 4 passed running this validator from WSL against another engine.
+DOCKER_TROUBLESHOOTING = (
+    ". The engine may be healthy behind a broken client bridge (e.g. Rancher Desktop on "
+    "Windows: 'timed out dialing Hyper-V socket'): point at a working engine with "
+    "--docker-host / DOCKER_HOST (e.g. unix:///var/run/docker.sock from WSL), or run the "
+    "validator from WSL/Linux. See references/codabench.md, 'Tier 4 troubleshooting'")
 
 
 def find_bundle_dockerfile(bundle_dir, explicit=None):
@@ -647,7 +717,13 @@ def main():
     parser.add_argument("--gpus", action="store_true", help="Tier 4: pass --gpus all to docker run (needs a GPU + container toolkit)")
     parser.add_argument("--rm-built-image", action="store_true", help="Tier 4: delete the image afterwards, but only if this run built it")
     parser.add_argument("--timeout", type=int, help="Seconds to allow ingestion/scoring programs to run (tiers 3-4). Default: the bundle's own phase execution_time_limit, or 600s if unset -- override for a benchmark whose real training cost exceeds that.")
+    parser.add_argument("--docker-host", help="Tier 4: Docker engine to use (sets DOCKER_HOST for every docker call), e.g. unix:///var/run/docker.sock or tcp://host:2375")
     args = parser.parse_args()
+    if args.docker_host:
+        os.environ["DOCKER_HOST"] = args.docker_host  # inherited by every docker subprocess
+
+    if args.submission and not args.submission.is_file():
+        sys.exit(f"--submission {args.submission}: no such file")
 
     bundle_dir = args.bundle_dir.resolve()
     all_issues = []
