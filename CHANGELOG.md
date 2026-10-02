@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased (2026-10-02): AmSC MLflow via the amsc-mlflow skill
+
+- benchmark-builder can now use the new
+  [`amsc-mlflow`](https://github.com/ben-hawks/amsc-mlflow) skill for the American
+  Science Cloud / Genesis Mission MLflow service. It's loaded on demand like the
+  genesis-skills skills, pinned to `38fa845`, until it's merged into that catalog.
+  `references/genesis-skills.md` covers how to load it, three integration-map rows, and
+  usage notes. It's always opt-in.
+- `SKILL.md`: an "AmSC MLflow tracking" entry under Additional deliverables. It logs
+  `reference_results/` (dry run first), registers reference weights as `staging`, and
+  promotes to `production` only after verification. It never asks for the token.
+- `references/hpc.md`: experiment tracking from jobs. Log after the chain from a login
+  node. When a job must log, use the skill's `mlflow_job_env.sh`, with the site proxy and a
+  token file.
+- `references/repo-structure.md`: `docs/VALIDATION.md` "Tools used" records the MLflow
+  server, experiment, run ID and registered versions.
+- `assets/repo/score_all.sh`: an optional, commented-out logging step.
+
 ## Unreleased (2026-10-02): Genesis Mission skills integration
 
 benchmark-builder now loads skills from

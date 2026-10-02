@@ -31,3 +31,10 @@ python -m benchpkg.report --results "$BENCH_RESULTS" --out "$BENCH_RESULTS/LEADE
 # Codabench submission zips (a model is packaged only if it has predictions for every
 # submission split; incomplete models are reported and make this step exit non-zero).
 python -m benchpkg.submission --results "$BENCH_RESULTS" --cache-dir "$BENCH_CACHE"
+
+# Optional: track these results in AmSC MLflow (the amsc-mlflow skill). Prefer running this
+# from a login node after the job instead (no token in the queue); see references/hpc.md.
+# if [ -n "${BENCH_MLFLOW_SKILL:-}" ]; then
+#     python "$BENCH_MLFLOW_SKILL/scripts/log_benchmark_results.py" --benchmark <name> \
+#         --results "$BENCH_RESULTS" --repo "$BENCH_REPO" --auxiliary <auxiliary models>
+# fi

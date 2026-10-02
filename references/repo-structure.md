@@ -210,7 +210,9 @@ software versions. This is what turns "we ran it" into evidence. Sections, as ap
    (`references/metrics-and-uq.md`).
 9. Tools used: every external skill or tool that produced or checked something here
    (e.g. `datacard-generator`, `croissant-validator`, `uq-metrics-evaluator`, the
-   lm-eval-harness skills), with its commit, so the checks can be re-run.
+   lm-eval-harness skills), with its commit, so the checks can be re-run. If results were
+   logged to AmSC MLflow (`amsc-mlflow`), the server, workspace, experiment and parent run
+   ID, plus any registered model versions and their aliases.
 
 Anything superseded (e.g. checkpoints that were reference solutions until a retrain) gets
 a dated "History" section, not deletion.
