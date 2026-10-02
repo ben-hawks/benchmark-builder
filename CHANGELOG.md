@@ -3,9 +3,9 @@
 ## Unreleased (2026-10-02): AmSC MLflow via the amsc-mlflow skill
 
 - benchmark-builder can now use the new
-  [`amsc-mlflow`](https://github.com/ben-hawks/genesis-mlflow) skill for the American
+  [`amsc-mlflow`](https://github.com/ben-hawks/amsc-mlflow) skill for the American
   Science Cloud / Genesis Mission MLflow service. It's loaded on demand like the
-  genesis-skills skills, pinned to `c008d94`, until it's merged into that catalog.
+  genesis-skills skills, pinned to `38fa845`, until it's merged into that catalog.
   `references/genesis-skills.md` covers how to load it, three integration-map rows, and
   usage notes. It's always opt-in.
 - `SKILL.md`: an "AmSC MLflow tracking" entry under Additional deliverables. It logs

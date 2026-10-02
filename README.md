@@ -45,7 +45,7 @@ submission.
   `references/genesis-skills.md` maps which skill is used where, and the problems found
   when running them.
 - **Optionally tracks results and models in AmSC MLflow.** It does this through the
-  [`amsc-mlflow`](https://github.com/ben-hawks/genesis-mlflow) skill (genesis-skills
+  [`amsc-mlflow`](https://github.com/ben-hawks/amsc-mlflow) skill (genesis-skills
   format, loaded on demand):
   - logs `reference_results/` as traceable MLflow runs;
   - registers reference weights with `staging`/`production` aliases;
