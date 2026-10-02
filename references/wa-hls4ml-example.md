@@ -64,8 +64,9 @@ Hugging Face `fastmachinelearning/wa-hls4ml` (CC-BY-NC 4.0), plus full Vivado pr
 - **Ground truth** is the post-logic-synthesis `resource_report` for the four resources
   plus `latency_report` for cycles/II. Per the dataset card, `latency_report` is a
   post-HLS estimate, since the dataset has no post-synthesis latency. axess-benchmark's
-  docs called both reports post-synthesis until this was corrected on 2026-10-02 (branch
-  `fix-latency-ground-truth`). The C-synthesis estimate `hls_resource_report` sits right next to
+  docs called both reports post-synthesis until this was corrected on 2026-10-02
+  ([axess-benchmark#1](https://github.com/ben-hawks/axess-benchmark/pull/1), merged as
+  `fd305cb`). The C-synthesis estimate `hls_resource_report` sits right next to
   `resource_report` in every sample and is not ground truth.
 - **Missing ground truth is excluded, never imputed**, and coverage is reported. Only
   90.7% of test samples are scored.
