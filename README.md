@@ -123,4 +123,5 @@ benchmark that scores well against that rubric.
 
 ## License
 
-TODO — not yet chosen. Treat this repo as all-rights-reserved until a LICENSE file is added.
+Apache License 2.0; see [LICENSE](LICENSE). Datasets, papers and third-party code used by
+a benchmark built with this skill keep their own licenses.

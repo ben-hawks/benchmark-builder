@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (2026-10-02): license
+
+- Licensed under Apache-2.0 (`LICENSE`); `SKILL.md` frontmatter declares `license: Apache-2.0`.
+
 ## Unreleased (2026-10-02): AmSC MLflow via the amsc-mlflow skill
 
 - benchmark-builder can now use the new
