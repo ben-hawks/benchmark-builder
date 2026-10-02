@@ -1,6 +1,6 @@
 ---
 name: benchmark-builder
-description: Helps a user design, structure, document, and self-score a scientific ML benchmark that conforms to the MLCommons Science Benchmarks Ontology (five-element definition, six-category rubric, arXiv:2511.05614), generating a reproducible repo, verifying reference solutions, and packaging a validated Codabench competition. Use whenever the user wants to build, formalize, publish, or audit a benchmark, dataset+task+metric suite, or reproducibility package, including LLM evaluation benchmarks, even if they never say "MLCommons," "ontology," or "Codabench." Trigger on "turn my model comparison into a proper benchmark," "structure this repo so others can reproduce our results," "grade our benchmark documentation," or "make this a Codabench competition." Also self-scores an existing benchmark, writes an MLCommons corpus entry or DOE GEAR/Genesis cards, and runs benchmarks on Slurm or PBS clusters, loading Genesis Mission skills (genesis-skills) for HPC sites, lm-eval tasks, data cards and model cards.
+description: Helps a user design, structure, document, and self-score a scientific ML benchmark that conforms to the MLCommons Science Benchmarks Ontology (five-element definition, six-category rubric, arXiv:2511.05614), generating a reproducible repo, verifying reference solutions, and packaging a validated Codabench competition. Use whenever the user wants to build, formalize, publish, or audit a benchmark, dataset+task+metric suite, or reproducibility package, including LLM evaluation benchmarks, even if they never say "MLCommons," "ontology," or "Codabench." Trigger on "turn my model comparison into a proper benchmark," "structure this repo so others can reproduce our results," "grade our benchmark documentation," or "make this a Codabench competition." Also self-scores an existing benchmark, writes an MLCommons corpus entry or DOE GEAR/Genesis cards, and runs benchmarks on Slurm or PBS clusters, loading Genesis Mission skills for HPC sites, lm-eval tasks, data/model cards and AmSC MLflow tracking.
 ---
 
 # Building an MLCommons-ontology-conformant benchmark
@@ -34,7 +34,9 @@ MLCommons uses.
   - the lm-eval-harness chain and `card-eval-updater` for LLM benchmarks;
   - `datacard-generator` and `croissant-validator` for the dataset;
   - `uq-metrics-evaluator` for metric checks;
-  - `literature-search`.
+  - `literature-search`;
+  - `amsc-mlflow` (AmSC / Genesis Mission MLflow), from its own repository until it joins
+    the catalog.
 
   That file says how to find or fetch each one (pinned commit, or latest for HPC sites),
   what to hand it, and what comes back. Follow the loaded skill's own workflow; don't
@@ -49,6 +51,7 @@ Later deliverables each have their own reference, read in full before starting t
 | Codabench competition bundle | the user wants participants to submit | `references/codabench-workflow.md`, `references/codabench.md` |
 | Cluster runs | the benchmark runs on Slurm or PBS | `references/hpc.md` |
 | LLM benchmark | the task evaluates language models | `references/llm-benchmarks.md` |
+| AmSC MLflow tracking and model registry | the user opts in (Genesis/AmSC work, or wants experiment tracking) | the `amsc-mlflow` notes in `references/genesis-skills.md`, then that skill's `SKILL.md` |
 
 ## Gather artifacts before interviewing
 
@@ -393,6 +396,16 @@ its reference in full first; the steps are there.
   evaluation results are written by script, never retyped:
   - `card-eval-updater` for LLM benchmarks;
   - `scripts/render_card_results.py` from `metrics.json` for everything else.
+
+- **AmSC MLflow tracking** (optional; the `amsc-mlflow` skill, `references/genesis-skills.md`).
+  Offer it to Genesis/AmSC users:
+  - log `reference_results/` with its `log_benchmark_results.py` (dry run first) and record
+    the run ID in `docs/VALIDATION.md`;
+  - register reference weights from `weights/MANIFEST.json` as `staging`, and move
+    `production` only after verification, with the user's go-ahead;
+  - track training runs from cluster jobs with rank-0 logging.
+
+  The user sets their MyAmSC token themselves. Never ask for it.
 
 ## Package for Codabench
 

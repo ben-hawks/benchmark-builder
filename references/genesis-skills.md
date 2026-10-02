@@ -54,6 +54,24 @@ in the "Tools used" list of `docs/VALIDATION.md` for everything else.
 path or content: genesis `data-exploration` writes to `tasks/<benchmark>/scratch/` and
 updates `plan.md`.
 
+### `amsc-mlflow`: loaded the same way, from its own repository for now
+
+`amsc-mlflow` (American Science Cloud / Genesis Mission MLflow: tracking, benchmark-result
+logging, model registry) follows the genesis-skills format, but until it's merged into the
+catalog it lives in [ben-hawks/genesis-mlflow](https://github.com/ben-hawks/genesis-mlflow)
+at `skills/amsc-skills/amsc-mlflow`. Load it like any other genesis skill (installed copy
+first, then `skill-search`, then a clone), with this repository and ref:
+
+```bash
+GM=${GENESIS_MLFLOW_DIR:-$HOME/.cache/genesis-mlflow}
+[ -d "$GM/.git" ] || git clone --filter=blob:none https://github.com/ben-hawks/genesis-mlflow "$GM"
+git -C "$GM" fetch --quiet origin
+git -C "$GM" checkout --quiet c008d94527ec47449f42609cbc8ea1ce4e44522b   # pinned
+# the skill: $GM/skills/amsc-skills/amsc-mlflow/SKILL.md
+```
+
+Once it's in genesis-skills, load it from there at the catalog's pinned commit instead.
+
 ## Rules when delegating
 
 - **Read the delegated `SKILL.md` in full and follow its workflow**, including its own
@@ -84,6 +102,9 @@ Paths are relative to the genesis-skills root.
 | LLM benchmarks: build the task | `configuration-creator` → `configuration-planner` → `data-exploration` → `configuration-implementor` → `configuration-tester` (`skills/baseeval-skills/lm-eval-harness-skills/...`) | the motif is text, QA or reasoning evaluated on language models | the dataset and the element A/C answers | `tasks/<task>/` (`plan.md`, `<task>.yaml`, `utils.py`) |
 | LLM benchmarks: model card | `card-eval-updater` (`skills/baseeval-skills/card-eval-updater`) | a reference or participant model is documented in a Genesis/BPSW model card | one full lm-eval (or Eval Factory / NeMo-Skills) run directory | the card's evaluation sections and `metrics:` frontmatter, validated |
 | LLM benchmarks on Perlmutter, API-served models | `perlmutter-nemo-eval` / `perlmutter-nemo-generate` (`skills/baseeval-skills/perlmutter-ns-skills/...`) | the user runs NeMo-Skills on Perlmutter against an OpenAI-compatible endpoint | an env file, a benchmark registered in their NeMo-Skills checkout, a model | `metrics.json` + `output*.jsonl` |
+| Track results in AmSC MLflow (optional; user opts in) | `amsc-mlflow` (`skills/amsc-skills/amsc-mlflow` in ben-hawks/genesis-mlflow) | after `score_all.sh`, when the user wants runs in the AmSC / Genesis MLflow service | `--results reference_results` (or a `card-eval-updater` `bundle.json`), `--repo`, `--auxiliary` models | a parent run plus one run per (split, model); its run ID goes in `docs/VALIDATION.md` |
+| Register reference weights in the AmSC Model Registry (optional) | `amsc-mlflow` | the user wants reference models loadable as `models:/<name>@production` | `weights/MANIFEST.json`, the weights dir, a loader in the benchmark package | registered versions with sha256 tags; `staging`, then `production` after verification |
+| Training runs on a cluster, tracked in MLflow | `amsc-mlflow` (`assets/train_with_mlflow.py`, `assets/mlflow_job_env.sh`) | the benchmark includes training, and the user wants it tracked | the training code, the target site | rank-0 logging, site proxy settings, token-file handling |
 | HPC: any Slurm cluster | `slurm` (`skills/hpc-skills/slurm`) | the benchmark runs on a Slurm cluster; submitting, monitoring or debugging jobs | — | scheduler syntax, `sacct`/`scontrol` troubleshooting |
 | HPC: any PBS cluster | `pbs` (`skills/hpc-skills/pbs`) | the benchmark runs on a PBS cluster | — | `select`/`depend` syntax, `qstat` troubleshooting |
 | HPC: a named site | `perlmutter`, `frontier`, `aurora` (`skills/hpc-skills/<site>`) | **whenever the user says they run on that machine** | — | site facts for the machine profile (queues, limits, GPUs, filesystems, modules) |
@@ -231,6 +252,32 @@ See `references/llm-benchmarks.md` for how the task plugs into the pipeline cont
 - Both skills refuse models outside their `config/supported_models.txt`.
 - `card-eval-updater` reads NeMo-Skills `metrics.json`, but it needs `--model-id`, since
   NeMo-Skills records no model identity, and NeMo-Skills scores are percentages.
+
+### `amsc-mlflow`
+
+- **Opt-in.** Logging to AmSC MLflow is never a required step of a benchmark. Offer it when
+  the user works under the Genesis Mission or AmSC, or asks for experiment tracking or a
+  model registry.
+- **The token is the user's.** They set `MLFLOW_TRACKING_TOKEN` (a MyAmSC Access Token)
+  themselves. Never ask for it in the conversation. Run its `check_connection.py` first.
+- **Dry run first.** Show `log_benchmark_results.py --dry-run` before logging. It needs no
+  token, and its output is what the user approves.
+- **Log after the job.** Results logging only reads the scored files, so prefer running it
+  from a login node after the cluster job, not from inside it (no token waiting in the
+  queue).
+- **Traceability.** Every child run carries the sha256 of the `metrics.json` it came from,
+  and re-running skips what's already logged. Record the parent run ID, the experiment and
+  the server in `docs/VALIDATION.md` ("Tools used").
+- **Registering reference weights** (`register_model.py files`) needs a loader function in
+  the benchmark's package (`<pkg>.mlflow_loader:load`), which takes the manifest's files and
+  returns a predictor. Register as `staging`. Move `production` only after the golden tests
+  and a run reproducing `reference_results/` pass, and ask first.
+- **Compute-node access.** On Frontier and ALCF systems, compute nodes reach the server
+  only through the site proxy. Its `references/hpc.md` lists the settings (Frontier and
+  ALCF unverified as of the pinned commit). Perlmutter needs none.
+- **Server.** The default is `https://mlflow-staging.american-science-cloud.org` (the AmSC
+  integration guide's staging server). Set `MLFLOW_TRACKING_URI` explicitly in anything
+  long-lived.
 
 ### `literature-search`
 

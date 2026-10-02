@@ -144,6 +144,21 @@ Model it on axess-benchmark's `docs/PERLMUTTER.md`.
   record the job IDs, exit codes and max relative difference in `docs/VALIDATION.md`.
   Add accelerator timings to `reference_solution/README.md`.
 
+## Experiment tracking from jobs (AmSC MLflow)
+
+If the user tracks runs in AmSC MLflow (the `amsc-mlflow` skill,
+`references/genesis-skills.md`):
+- **Log scored results after the chain finishes, from a login node.** Run
+  `log_benchmark_results.py --results $BENCH_RESULTS` there. Nothing in the job needs a
+  token or outbound access.
+- **When a job must log itself** (training metrics):
+  - source the skill's `assets/mlflow_job_env.sh` in that job, or in `stack.sh`'s
+    `bench_stack_env`. It sets the site proxy (Frontier and ALCF compute nodes need one;
+    Perlmutter doesn't), the multipart-upload settings, and reads the token from a chmod-600
+    file;
+  - never pass the token through `sbatch --export` or `qsub -v`;
+  - record the proxy settings that worked in `docs/<MACHINE>.md`.
+
 ## Generic gotchas
 
 These apply whatever the benchmark:
