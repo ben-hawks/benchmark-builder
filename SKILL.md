@@ -1,6 +1,7 @@
 ---
 name: benchmark-builder
 description: Helps a user design, structure, document, and self-score a scientific ML benchmark that conforms to the MLCommons Science Benchmarks Ontology (five-element definition, six-category rubric, arXiv:2511.05614), generating a reproducible repo, verifying reference solutions, and packaging a validated Codabench competition. Use whenever the user wants to build, formalize, publish, or audit a benchmark, dataset+task+metric suite, or reproducibility package, including LLM evaluation benchmarks, even if they never say "MLCommons," "ontology," or "Codabench." Trigger on "turn my model comparison into a proper benchmark," "structure this repo so others can reproduce our results," "grade our benchmark documentation," or "make this a Codabench competition." Also self-scores an existing benchmark, writes an MLCommons corpus entry or DOE GEAR/Genesis cards, and runs benchmarks on Slurm or PBS clusters, loading Genesis Mission skills for HPC sites, lm-eval tasks, data/model cards and AmSC MLflow tracking.
+license: Apache-2.0
 ---
 
 # Building an MLCommons-ontology-conformant benchmark
