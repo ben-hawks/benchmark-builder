@@ -11,7 +11,12 @@
 
 benchmark_name: ""            # e.g. "wa-hls4ml"
 scored_date: ""               # e.g. "2026-08-14"
-notes: ""                     # free text, anything a future reader should know about this scoring pass
+# Dated caveats. Each re-score adds a dated line; keep caveats that don't flip an item here
+# rather than silently in your head. Whenever a verified fact changes (data published, a
+# cluster run done, a reference model replaced), re-read EVERY evidence string below --
+# the scorer flags provisional wording ("pending", "not yet", "TODO", "will be") but
+# can't know a fact changed.
+notes: ""                     # e.g. "Re-scored 2026-10-02 after <change>. Caveats: (1) ... (2) ..."
 
 # --- Category 1: Software Environment (1 point per true item, max 5) ---
 software_environment:

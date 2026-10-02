@@ -1,138 +1,197 @@
-# Worked example: wa-hls4ml mapped onto the ontology
+# Worked example: axess-benchmark (wa-hls4ml)
 
-Source: Hawks et al., "wa-hls4ml: A Benchmark and Surrogate Models for hls4ml Resource and
-Latency Estimation," arXiv:2511.05615. Same lead author as the ontology paper, and one of
-the concrete benchmarks the ontology is meant to standardize — treat it as a positive
-example of what a well-scored entry actually looks like in practice, not just in theory.
+**Repository:** [ben-hawks/axess-benchmark](https://github.com/ben-hawks/axess-benchmark)
+(state described here: commit `e8cccb1`, 2026-10-02). **Paper:** Hawks et al., "wa-hls4ml:
+A Benchmark and Surrogate Models for hls4ml Resource and Latency Estimation," ACM TRETS
+19(2), 2026, pp. 1–29, [doi:10.1145/3787490](https://doi.org/10.1145/3787490) (preprint
+arXiv:2511.05615; section, equation and table numbering is the same in both).
+
+axess-benchmark is the wa-hls4ml benchmark built with this skill. It is the worked
+example the skill's recommended layout (`references/repo-structure.md`) is generalized
+from:
+
+- it self-scores 5.00/5 on the rubric;
+- it's a validated Codabench results-submission bundle;
+- its first full NERSC Perlmutter run (Slurm jobs 59209565–68) reproduced the committed
+  reference results to ≤2.4e-4 relative in every metric cell.
 
 Use this file three ways:
-1. **As a pattern** when scaffolding a new benchmark — each subsection below shows what a
-   real, complete instance of that ontology element contains, so you can ask a user
-   analogous questions instead of vague ones.
-2. **As a sanity check on the rubric** — wa-hls4ml scores very well on some categories and
-   has known, self-acknowledged gaps in others (see "Where it doesn't max out" at the
-   bottom). If your scoring logic disagrees wildly with the numbers here for an
-   apples-to-apples benchmark, something's off in how you're applying the rubric.
-3. **As a model for the extraction pass itself** — everything below was written by
-   reading the paper and repo (arXiv:2511.05615, the wa-hls4ml-paper repo's READMEs and
-   code), not by interviewing anyone. That's exactly what SKILL.md's "Gather artifacts
-   before interviewing" step should produce for a new benchmark too: evidence-cited draft
-   answers per element, ready for the user to confirm or correct rather than dictate from
-   scratch.
 
-## The five elements, as wa-hls4ml implements them
+1. **As a pattern** for what a complete answer to each ontology element looks like.
+   Read the repo's `README.md` (the benchmark card), `docs/VALIDATION.md` and
+   `reference_solution/README.md` alongside it.
+2. **As a list of mistakes to not repeat** ("What this example teaches", below). Each
+   one cost real time and became a verification step in SKILL.md.
+3. **As a calibration point for the rubric.** If your scoring of an apples-to-apples
+   benchmark disagrees wildly with this one, check how you're applying the rubric.
 
-### A. Problem Specification and Constraints
-- **Task**: predict FPGA hardware resource usage and latency for a neural network *before*
-  running hardware synthesis. Input = a Keras/QKeras model description plus its hls4ml
-  conversion config (precision, reuse factor, strategy, I/O type). Output = 6 regression
-  targets: LUTs, FFs, DSPs, BRAM, latency (clock cycles), initiation interval (II).
-- **Constraints**: target FPGA part (e.g. Alveo U250/U200), clock period, Vitis/Vivado
-  version — these bound the problem (a prediction is only valid for a given target/version)
-  without themselves being optimized.
-- Lesson for scaffolding: separate "what varies and is the actual regression target" from
-  "what's fixed context that changes the meaning of a sample" — that's the
-  constraints-vs-metrics distinction the ontology cares about.
+The DOE GEAR cards in `examples/wa-hls4ml/` were drafted from the paper and describe the
+paper's original GNN. They predate the facts below; in particular, the paper's Table 4
+GNN checkpoint was trained on HLS estimates (§D). Cross-check against the repo before
+reusing their claims.
+
+## The five elements, as axess-benchmark implements them
+
+### A. Problem specification and constraints
+
+- **Task.** Regression from `(model_config, hls_config)` to six targets per sample:
+  - `BRAM`, `DSP`, `FF`, `LUT` (absolute resource counts);
+  - `cycles_max` (latency) and `interval_max` (initiation interval), both in clock
+    cycles.
+- **Inputs** are only what's available before synthesis. `data/SCHEMA.md` names the
+  fields that are **not valid inputs**: every `*_report` field.
+- **Constraints** are recorded per sample but not predicted or optimized: target FPGA
+  part, toolchain versions, clock period, I/O type and strategy.
 
 ### B. Dataset
-- 683,176 synthesized samples total, explicitly split into **Training (478,220)**,
-  **Validation (102,472)**, **Test (102,484)**, and a held-out **Exemplar test set (887)**
-  of real scientific-application architectures used specifically to test generalization
-  beyond the synthetic training distribution.
-- Every sample is one JSON file with 9 fixed top-level fields: `meta_data`, `model_config`,
-  `hls_config`, `resource_report`, `hls_resource_report`, `latency_report`, `target_part`,
-  `vivado_version`, `hls4ml_version` — i.e. the schema is documented field-by-field, not
-  just "here's a folder of JSON."
-- FAIR in practice: hosted on HuggingFace (`fastmachinelearning/wa-hls4ml`, plus a
-  companion `-projects` dataset with the full synthesis logs) under a named license
-  (CC-BY-NC 4.0), with a dataset card — that's Findable + Accessible + Interoperable in one
-  move. Reusable because the generation code (`wa-hls4ml-search`) is public alongside the
-  data, so the pipeline that produced it is itself reproducible, not just the output.
-- Lesson: a "dataset" isn't just files — it's files + a documented schema + a stated split
-  + a documented generation process. All four are checkable independently.
 
-### C. Performance Metric(s)
-**These are wa-hls4ml's own choices for its own regression task, not a universal
-template.** The pattern worth copying is *how rigorously they're defined and applied*
-(exact formula, explicit edge-case handling, per-target/per-subset breakdown) — not the
-specific R²/SMAPE/RMSE trio itself. A generative-chemistry or RL/control benchmark needs
-completely different metrics; see `references/ontology.md`'s "What metrics do comparable
-existing benchmarks actually use?" table before defaulting here.
+Hugging Face `fastmachinelearning/wa-hls4ml` (CC-BY-NC 4.0), plus full Vivado projects in
+`-projects`, generated by the open `wa-hls4ml-search` pipeline.
 
-Three metrics, formally defined, applied identically to every regression target
-(BRAM/DSP/FF/LUT/Cycles/II):
-- **R²** (coefficient of determination) — overall variance captured.
-- **SMAPE** (symmetric mean absolute percentage error) — `200%/n * sum(|y-ŷ| / (|y|+|ŷ|+ε))`
-  — relative accuracy, comparable across targets of very different scale (LUTs vs. cycles).
-  Note the explicit epsilon handling: they set ε to "the smallest strictly positive value
-  the resource/latency variables can have" (1, since these are integer counts) specifically
-  to avoid division by zero — a well-defined metric spells out its edge cases, it doesn't
-  leave them implicit.
-- **RMSE** — magnitude of error, sensitive to outliers.
-- Plus a visualization metric, **RPE** (relative percent error) per sample, shown as a
-  box plot per target variable — this is what makes systematic over/under-prediction
-  visible in a way a single scalar can't.
-- Metrics are computed **per target variable separately**, and separately again per dataset
-  subset (all/dense/conv1d/conv2d, and per exemplar architecture) — this is what "the
-  metrics fully capture a given solution's performance" looks like at rubric-scoring time:
-  not one number, but a breakdown fine enough to reveal where a model actually fails (e.g.
-  their own Table 4 shows the baseline MLP is fine on dense layers but bad on DSP
-  prediction specifically).
+| Split | Samples | With post-synthesis ground truth | Role |
+|---|---|---|---|
+| train | 478,216 | 433,674 | for submitters |
+| val | 102,472 | n/a | for submitters |
+| **test** | **102,484** | **92,933** | scoring; groups dense / conv1d / conv2d |
+| **exemplar** | **887** | **886** | held-out generalization: 7 real scientific architectures |
 
-### D. Reference Solution
-Not one reference solution but three, deliberately positioned as a strength-of-evidence
-ladder:
-- **Baseline MLP** (from prior work, rule4ml) — architecture, training procedure
-  (200 epochs, Adam, MSLE loss) documented in the paper text.
-- **GNN** (5-layer GATv2, described down to the attention formula) — architecture figure,
-  hyperparameters, training hardware (NVIDIA A10), training procedure all stated.
-- **Transformer** (2 encoder blocks, per-layer tokenization) — same level of detail,
-  training hardware (A100) stated.
-- All three are evaluated with the *exact same* metric suite on the *exact same* test/
-  exemplar splits, and results are reported in full tables (Table 4, Table 5) — satisfying
-  "all metrics defined as part of the benchmark are evaluated as part of the reference
-  solution" for every reference solution, not just one.
+- **Ground truth** is the post-logic-synthesis `resource_report` + `latency_report`. The
+  C-synthesis estimate `hls_resource_report` sits right next to it in every sample and
+  is not ground truth.
+- **Missing ground truth is excluded, never imputed**, and coverage is reported. Only
+  90.7% of test samples are scored.
+- **`sample_id`** is `meta_data.uuid`, or `meta_data.model_id` for the `2_20` subset
+  (the documented fallback). Uniqueness is enforced per split.
+- **Streaming.** One train file is 1.9 GB, more than a workstation's free memory, so it's
+  streamed with `ijson` (`use_float=True`).
+- **The training-label filter isn't the scoring filter.** The upstream converter kept
+  samples with a missing latency report (read as 0), which gives 433,676 train samples
+  vs the benchmark's 433,674. Rebuilding the normalization stats needed the converter's
+  filter.
 
-### E. Documentation and Reproducible Protocol
-- A full paper (this one) plus a repo README that separates "how to reproduce the dataset,"
-  "how to reproduce the surrogate models," and "how to reproduce the plots" into distinct,
-  linked sections rather than one undifferentiated wall of instructions.
-- Section 3.1 of the paper ("Submission Guidelines") is itself a documentation-of-protocol
-  artifact: it tells a *future* contributor exactly what a valid submission must include
-  (predicted values for every metric, RPE box plots) vs. strongly recommended (architecture/
-  hyperparameter description, shared code/weights, inference hardware + timing) vs.
-  suggested (further constraints/training data documented). That three-tier framing
-  (required / strongly recommended / suggested) is a reusable pattern — steal it directly
-  when writing a submission_report template for a new benchmark.
+### C. Performance metrics
 
-## Rubric self-audit (approximate — treat as illustrative, not authoritative)
+R², SMAPE, RMSE per target, overall and per group, plus a per-sample RPE box plot.
+These fit a regression motif; they aren't a default for other motifs (see
+`references/ontology.md` Part 3).
 
-This is what applying the six-category rubric to wa-hls4ml as published looks like, to
-calibrate your own scoring against a known case:
+- **SMAPE** is `200%/n · Σ|y−ŷ|/(|y|+|ŷ|+ε)` with **ε = 1**, as paper Eq. 2 states. That
+  makes y = ŷ = 0 score 0.
+- **The paper's own numbers only reproduce with ε = 1e-8**, as in the training code. The
+  benchmark implements the stated formula and documents the discrepancy.
+- **Paper Table 4 has internal inconsistencies visible without any code:**
+  - the dense DSP R² is printed as −0.74, while the same row's RMSE implies −111.74;
+  - the "All" row matches the checkpoint's stored training-time metrics and can't be
+    consistent with the dense row.
+- **Table 4 also mixes ground truths.** Its MLP row is scored against post-synthesis
+  labels; its GNN and Transformer rows against HLS estimates.
 
-- **Software Environment**: code is public across multiple repos (dataset gen, models,
-  baseline) and documented per-component, but the repo is spread across several large git
-  submodules with no single one-command reproduction path, and the paper itself doesn't
-  claim "runs without modification." Strong but not a clean 5/5.
-- **Problem Specification and Constraints**: task, inputs, outputs, and target-hardware
-  constraints are all explicit (Table 2, Section 2.1.1's parameter ranges). Close to 5/5.
-- **Dataset**: hits all four FAIR points (hosted, licensed, documented schema, versioned
-  with public generation code) plus explicit train/val/test/exemplar splits. 5/5.
-- **Performance Metrics**: R²/SMAPE/RMSE are fully defined with explicit edge-case handling
-  (the ε term) — Definitions likely 3/3. Whether they "fully capture" performance is a
-  judgment call: the paper itself flags that RMSE "may reflect a tendency towards smaller
-  absolute predictions rather than better accuracy" — the authors are explicitly aware
-  their metric suite has a known blind spot on its own reference results. That kind of
-  self-aware caveat is evidence *for* Metric Quality being taken seriously, but it also
-  means don't auto-assume 2/2 without checking whether it's addressed.
-- **Reference Solution**: three fully-documented, independently reproducible reference
-  solutions, all evaluated against all metrics. 5/5.
-- **Documentation**: task/background/motivation/evaluation are all explained at length, and
-  an academic paper exists (this one, plus the companion rule4ml paper it builds on). 5/5.
+### D. Reference solutions
 
-The paper's own "Summary and Outlook" (Section 6) explicitly names the honest gaps: the
-exemplar/test distribution mismatch limits generalization claims, and they call out future
-work to broaden dataset diversity. **A benchmark doesn't need to claim perfection to score
-well** — the rubric rewards being correct and complete about what's actually true, including
-naming known limitations, over overclaiming. Encourage users you're helping to do the same:
-a documented limitation is worth more, rubric-wise and scientifically, than silence about it.
+| | Baseline MLP | GNN | Transformer | rule4ml GNN (*auxiliary*) |
+|---|---|---|---|---|
+| Weights | bundled in `rule4ml==0.2.0` | release asset, sha256 in `weights/MANIFEST.json` | release asset, sha256 in manifest | bundled in rule4ml |
+| Architecture | 6 per-target MLPs | 5× GATv2 (5 heads × 512) | 2-block encoder (8 heads, d=512) | 6 per-target GIN models |
+| Trained on | post-synthesis | post-synthesis (**retrained**) | post-synthesis (**retrained**) | post-synthesis |
+| Test mean R² | 0.32 | 0.78 | **0.81** | 0.55 |
+| Exemplar mean R² | 0.25 | −1.96 | −0.52 | −1.91 |
+
+- **The reference GNN/Transformer are the paper's architectures retrained on
+  post-synthesis `resource_report` labels**, from the `wa_hls4ml_models` release
+  `resource-report-retrain` (`ac394e9`).
+  - The checkpoints behind paper Table 4 were trained on `hls_resource_report`. That was
+    proven on data: 100% of the training arrays' label rows match `hls_resource_report`,
+    and 0% match `resource_report`.
+  - Scored against the benchmark's ground truth, those checkpoints were worse than
+    predicting the mean, so they're kept only as dated history in `docs/VALIDATION.md`
+    §5.
+- **The inference procedure includes more than weights:**
+  - vendored preprocessing, bit-identical to upstream (tested);
+  - normalization stats the checkpoints didn't ship, rebuilt from the train split and
+    verified against the stats file later found in the release;
+  - a prediction cap at the largest training label that lives only in the upstream
+    eval code.
+- **Per-sample agreement with the release's own test predictions:** ≤2.8e-4 relative
+  over 92,933 samples, with identical cap counts and identical printed R².
+- **rule4ml's GIN GNN is auxiliary.** It's run and scored, but it isn't the paper's
+  GATv2 GNN. An early pass had "validated" it as the paper's GNN by mistake.
+
+### E. Documentation and reproducible protocol
+
+- `README.md` is the benchmark card. It has a quick start, a reference-results table,
+  "how to read this", and **known limitations**:
+  - exemplar out-of-distribution degradation;
+  - target part isn't an input, which hurts BRAM on `2_20`;
+  - the Bipc feature fallback;
+  - the retrained vs paper-checkpoint distinction.
+- `docs/VALIDATION.md` records every verification with numbers, dates and hardware.
+  `docs/PERLMUTTER.md` covers running on the cluster.
+- Reproduction is `setup.sh` (pinned envs, recorded dataset revision, sha256-checked
+  weights), then `pytest` (golden outputs on 40 real samples), then `submit.sh`, then a
+  comparison with `reference_results/`.
+- `SUBMISSION.md` uses the paper's **required / strongly recommended / suggested**
+  tiers. Reuse that pattern for any benchmark.
+- `CITATION.cff`: the software at the top level (Apache-2.0, `repository-code`), the
+  paper as `preferred-citation`, with metadata from doi.org.
+
+## What this example teaches
+
+Each item became a step in SKILL.md or `references/repo-structure.md`.
+
+1. **Verify the reference model's identity and weights first.** Load with
+   `strict=True`, record sha256 in a manifest, and list reference vs auxiliary
+   explicitly. The wrong GNN was "validated" once.
+2. **Audit the training label against the scored label, on data.** The paper's
+   checkpoints predicted a different quantity than the benchmark scores.
+3. **The inference procedure is weights + preprocessing + statistics +
+   post-processing.** Missing stats had to be reconstructed, and the cap existed only
+   in eval code. Ship small derived artifacts in `weights/`, and verify per sample.
+4. **Reproduce a published number with the stated formula.** ε = 1 vs 1e-8, plus the
+   table's internal inconsistencies.
+5. **Ask whether the benchmark is score-only or includes training.** axess's user chose
+   score-only (2026-09-29), but that's a per-benchmark decision.
+6. **Generic Slurm, tuned per machine.**
+   - Perlmutter needed separate venvs (site PyTorch module vs TensorFlow).
+   - Downloads happen on login nodes only.
+   - `-A` goes on the command line, and the repo path through `--export`.
+   - triton segfaults on CPU nodes.
+   - Golden tests run before jobs.
+
+   See `references/hpc.md`.
+7. **Data handling defaults:** stream large JSON, featurize once into a cache that
+   tolerates older formats, keep `sample_id` unique, exclude missing truth, and keep the
+   training filter separate from the scoring filter.
+8. **Codabench:**
+   - choose results submission from scope + data visibility;
+   - make the pipeline emit submission zips;
+   - build the bundle from the same truth function;
+   - rank on a bounded primary-split metric (the exemplar R² of the training-mean
+     baseline was −2651);
+   - run the discrimination check: 0.809 vs 0.000 mean R², SMAPE 10.3% vs 114%.
+9. **Citations:** published DOI over preprint, fetched from doi.org; the software at the
+   top of `CITATION.cff`, distinct from the dataset license.
+10. **Keep the self-score current.** "HF repo pending", "not yet on Perlmutter" and
+    "Table 4 reproduced" all went stale.
+11. **Mark auxiliary models** (italic leaderboard rows, a separate column).
+
+## Rubric self-score (from the repo's `rubric.yaml`, 2026-10-02)
+
+| Category | Score | Note |
+|---|---|---|
+| Software Environment | 5 | complete score-only pipeline, runs unmodified (workstation CPU and Perlmutter GPU), envs pinned |
+| Problem Specification | 5 | task, inputs, outputs, format, constraints all explicit |
+| Dataset | 5 | FAIR ×4 + defined splits |
+| Performance Metrics | 3 + 2 | fully defined incl. ε; per-target, per-group, plus RPE |
+| Reference Solution | 5 | three references + one auxiliary, all metrics, verified inference |
+| Documentation | 5 | published paper; task/background/motivation/evaluation explained |
+| **Overall** | **5.00** | |
+
+The `notes:` block records the caveats that don't flip any item:
+
+- the reference results came from a Windows CPU, and the Perlmutter GPU run matched them;
+- paper Table 4 isn't reproduced by the retrained models;
+- the GNN handles the Bipc exemplar samples badly.
+
+**A benchmark doesn't need to claim perfection to score well.** The rubric rewards being
+correct and complete about what's true, including named limitations. Encourage users to
+document limitations rather than stay silent about them.

@@ -56,6 +56,22 @@ and measures throughput; another only measures accuracy).
 A solution that satisfies the problem spec and constraints, using the defined dataset, with
 its performance metrics measured as a **baseline** other solutions are compared against.
 
+*Skill guidance (not ontology text):* **a reference solution scored against a different
+target than it was trained on isn't a valid reference.** "Using the defined dataset"
+includes the dataset's defined ground truth. Two things to check:
+
+- A model trained on an adjacent label isn't measuring the benchmark's task, even when
+  that label lives in the same dataset. In axess-benchmark the original checkpoints were
+  trained on `hls_resource_report` (HLS estimates), not the benchmark's post-synthesis
+  `resource_report`, and scored worse than predicting the mean.
+- Paper prose isn't enough evidence of which label a model trained on. Prove it on data,
+  by matching the training labels against each candidate field.
+
+The reference solution also means the whole published inference procedure, not just the
+weights: preprocessing, the statistics it needs, and post-processing such as inverse
+transforms or caps. A checkpoint run without them isn't the reference solution. See
+SKILL.md element D.
+
 ### E. Documentation and Reproducible Protocol
 A protocol to reproduce the reference solution, so other submissions can make direct,
 apples-to-apples comparisons. Typically reference code in a versioned, well-defined software

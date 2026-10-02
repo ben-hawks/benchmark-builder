@@ -13,9 +13,15 @@ This is the target format for turning a standalone benchmark (built per
 `references/ontology.md`) into something a participant can browse, understand, and
 submit to on codabench.org — a **separate, later step**, not a replacement for the
 standalone benchmark. Read this file in full before generating any Codabench bundle
-files; see `assets/codabench/example_bundle/` for a complete, runnable, self-tested
-worked example to pattern-match against (this skill's own equivalent of
-`references/wa-hls4ml-example.md`, but for Codabench instead of the ontology).
+files. Two complete, runnable, self-tested worked examples to pattern-match against:
+
+- `assets/codabench/example_bundle/`, a code submission;
+- `assets/codabench/results_example/`, a results submission built from versioned
+  `bundle_src/` by `build_bundle.py`, the way axess-benchmark does it (see "Building the
+  bundle from the benchmark" below).
+
+The real-world reference is axess-benchmark's `codabench/` directory
+(`references/wa-hls4ml-example.md`).
 
 ## The big design decision: code submission vs. results submission
 
@@ -37,6 +43,92 @@ entirely, so ask the user rather than assuming:
 A competition can offer both (an `ingestion_only_during_scoring`-style setup or
 per-phase differences exist for advanced cases), but pick one as the default and only
 reach for more complexity if the user specifically needs it.
+
+**Derive the recommendation from the benchmark's scope and data visibility, then
+confirm it with the user:**
+
+| Benchmark | Natural fit | Why |
+|---|---|---|
+| Score-only (pretrained or offline models), ground truth public | results submission | nothing to hide, and a code submission would only add compute workers and an image to maintain. axess chose this: code submission couldn't hide the answers either, and its models need GPU workers plus a custom image (PyTorch Geometric) |
+| Evaluates training or a method, or a constraint must be measured on the platform (latency, cost) | code submission | the thing being evaluated has to run under controlled conditions |
+| Hidden test inputs (not just hidden labels) | code submission | participants must not see the inputs |
+
+Write the scoring program so it works for either mode. It does if a code submission's
+ingestion program writes the same prediction files a results submission would upload.
+
+## Building the bundle from the benchmark
+
+Pattern from axess-benchmark; a runnable miniature is
+`assets/codabench/results_example/`, and the template is
+`assets/codabench/build_bundle.py`.
+
+```
+codabench/
+├── README.md              mode, phases, ranking, validation record, pre-upload checklist
+├── build_bundle.py        bundle_src/ + generated files → build/
+├── bundle_src/            hand-written, versioned
+│   ├── competition.yaml, logo.png, pages/
+│   ├── scoring_program/   scoring.py, vendored metrics, metadata.yaml
+│   └── starting_kit/      README.md (+ helper scripts)
+└── build/                 generated, git-ignored
+    ├── bundle/            validate this
+    ├── competition_bundle.zip   upload this
+    └── extra/baseline_mean_submission.zip   weak baseline for the discrimination check
+```
+
+- **One truth function.** `build_bundle.py` imports the benchmark package's truth
+  function (`truth.truth_frame`), the same one `score.py` and `submission.py` use. From
+  it, it generates:
+  - the hidden `reference_data/truth_<split>.csv`;
+  - `starting_kit/<split>_sample_ids.csv`;
+  - `solution/` (the reference model's predictions restricted to scored samples);
+  - `starting_kit/sample_submission.zip`;
+  - a weak baseline (per-target training mean).
+
+  Hand-copying any of these into the bundle is how a bundle drifts from its benchmark.
+- **The benchmark pipeline emits submissions.** `src/<pkg>/submission.py`, the last step
+  of `scripts/score_all.sh`, writes `<results>/codabench/<model>_submission.zip` for every
+  model (`assets/repo/submission.py`). Each zip has exactly the scored samples, sits at
+  the zip root, and gets the scoring program's own checks. A model with incomplete or
+  non-finite predictions gets no zip and a non-zero exit. Validate these zips against the
+  built bundle; their Codabench scores must equal the benchmark's `metrics.json`.
+- **Validate `build/bundle/`**, not `bundle_src/`, since the generated directories only
+  exist in the build.
+
+## Scoring program contract
+
+What every generated `scoring.py` must do. axess's
+`codabench/bundle_src/scoring_program/scoring.py` and
+`assets/codabench/results_example/bundle_src/scoring_program/scoring.py` both implement
+it:
+
+- **Declare the submission contract** as a module-level constant the validator can read
+  without importing the program:
+  ```python
+  SUBMISSION_FILES = ["predictions_test.csv", "predictions_holdout.csv"]
+  ```
+- **Build each expected path as a literal** `os.path.join(prediction_dir, "<name>")`. The
+  validator's regex fallback only detects that form.
+- **Tolerate one wrapping folder** (search `prediction_dir` for the expected name if it
+  isn't at the root), but document root-level files as the format.
+- **Fail with a message naming the problem**, on stderr with exit 1, for each of these:
+  missing file, missing column, duplicate `sample_id`, missing scored sample (say how
+  many and give examples), non-numeric value, NaN/inf.
+- **Ignore extra rows**, such as predictions for samples without ground truth.
+- **Write NaN as `null`** in `scores.json` (JSON has no NaN). Print the full per-group
+  tables to stdout for the detailed-results panel.
+
+## Ranking and discrimination
+
+- **Rank on a bounded metric of the primary split.** Leaderboard column `index: 0` is
+  the ranking key.
+  - Don't rank on a metric that's unbounded below, such as R² on an out-of-distribution
+    split. axess's training-mean baseline scored −2651 on its exemplar split.
+  - Show such metrics as extra columns, and break ties with a second primary-split
+    metric.
+- **Discrimination check, every time the bundle is built:** score the reference solution
+  and the weak baseline, and report both. axess: test mean R² 0.809 vs 0.000, SMAPE 10.3%
+  vs 114%. If they don't clearly separate, the metric or the bundle is wrong.
 
 ## Bundle directory structure
 
@@ -300,9 +392,14 @@ those specific files, not assumed:
   `np.genfromtxt(os.path.join(prediction_dir, 'prediction'))`, the zip must contain a
   file literally named `prediction` at its root.
 
-`scripts/validate_codabench_bundle.py` checks this automatically by reading the actual
-ingestion/scoring program source (regex for the relevant `import`/`open`/`genfromtxt`
-calls) rather than assuming a convention — trust that check over guessing.
+`scripts/validate_codabench_bundle.py` checks this automatically. If the ingestion
+(code) or scoring (results) program declares a module-level
+`SUBMISSION_FILES = [...]`, it uses that: the file is parsed with `ast`, never imported.
+Otherwise it falls back to a regex over the program source (`from X import Y` for code
+submissions, a literal `os.path.join(<res/prediction dir>, "<name>")` for results). It
+warns if the declared list misses a name the source appears to read. Declare the
+constant in every program you generate; the regex is a fallback for bundles you didn't
+write.
 
 ## Required vs. optional — what to ask the user for
 
@@ -310,10 +407,12 @@ calls) rather than assuming a convention — trust that check over guessing.
 - Competition title, and which submission mode (code vs. results) fits the benchmark.
 - A logo image — if none exists yet, note the bundle is missing one rather than
   fabricating a placeholder graphic.
-- Terms and conditions text. **Never author real legal/participation terms yourself** —
-  draft an obviously-marked placeholder (`assets/codabench/example_bundle` doesn't even
-  attempt real terms — see its `pages/terms_and_conditions.md`) and tell the user
-  explicitly that it must be reviewed/replaced before the competition goes live.
+- Terms and conditions text. **Never author real legal/participation terms yourself.**
+  Draft an obviously-marked placeholder (`assets/codabench/example_bundle` doesn't even
+  attempt real terms; see its `pages/terms_and_conditions.md`), and tell the user
+  explicitly that it must be reviewed or replaced before the competition goes live.
+  Uploading with the placeholder is acceptable only to a dev instance, and only when the
+  user confirms that's the purpose.
 - Phase start dates (and end date, except optionally the final phase).
 - Contact email, if they want one listed.
 
@@ -352,3 +451,26 @@ ingestion/scoring program expects), a local functional dry run (no Docker needed
 bundles using the `CODABENCH_ROOT` convention above), and, if Docker is available and
 requested, a fully faithful run inside the declared `docker_image`. Don't hand a bundle
 to the user as finished without running at least the first two tiers.
+
+### Tier 3 troubleshooting: host missing dependency
+
+Tier 3 runs the programs with the **host's** Python. If the host lacks a package the
+image provides (numpy, pandas, ...), the validator reports "tier 3 not verified: host
+Python is missing dependency X" as a warning. That's a host problem, not a scoring
+failure. Install the package on the host and re-run, or rely on tier 4.
+
+If the missing module is one the program meant to vendor (e.g. `metrics`), it's an
+error: add the file to the program directory.
+
+### Tier 4 troubleshooting: "docker daemon not reachable"
+
+"Not reachable" often means the client-to-engine bridge is broken while the engine is
+fine. Seen with Rancher Desktop on Windows: the client reported "timed out dialing
+Hyper-V socket" while dockerd inside the VM was healthy. Tier 4 for axess-benchmark
+passed by running the validator from WSL Ubuntu against a working engine. Options:
+
+- `--docker-host URL` (or `DOCKER_HOST`) points every docker call at a specific engine,
+  e.g. `unix:///var/run/docker.sock` inside WSL, or `tcp://host:2375`;
+- run the validator from WSL/Linux, where the engine's socket is local. The host Python
+  there may lack numpy/pandas, which only affects tier 3 (see above);
+- the validator only needs *some* engine that can pull and run the declared image.

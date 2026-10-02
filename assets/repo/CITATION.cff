@@ -1,0 +1,37 @@
+# CITATION.cff shape for a benchmark repository (see references/repo-structure.md, "Citations").
+# Top level = THIS SOFTWARE (its own title, code license, repository). The paper goes in
+# preferred-citation. Never put the paper title or the DATASET license at the top level.
+# Fill preferred-citation from doi.org content negotiation, not by hand:
+#     curl -LH "Accept: application/vnd.citationstyles.csl+json" https://doi.org/<doi>
+# Validate:  pip install cffconvert && cffconvert --validate
+cff-version: 1.2.0
+message: "If you use this benchmark, please cite the paper in preferred-citation."
+title: "<Benchmark name> benchmark"
+abstract: "<One sentence: what the benchmark software provides (data access, metrics, reference models, workflows).>"
+authors:
+  - family-names: "<Family>"
+    given-names: "<Given>"
+repository-code: "https://github.com/<org>/<benchmark-repo>"
+license: Apache-2.0            # the CODE license (matches LICENSE); the dataset license is stated in README
+version: "1.0.0"
+date-released: "YYYY-MM-DD"
+preferred-citation:
+  type: article
+  title: "<Paper title exactly as published>"
+  authors:
+    - family-names: "<Family>"
+      given-names: "<Given>"
+  journal: "<Journal>"
+  volume: 0
+  issue: 0
+  start: 1
+  end: 1
+  year: 2026
+  doi: "<10.xxxx/xxxxx>"
+  url: "https://doi.org/<10.xxxx/xxxxx>"
+  identifiers:
+    - type: doi
+      value: "<10.xxxx/xxxxx>"
+    - type: other
+      value: "arXiv:<id>"
+      description: "arXiv preprint"

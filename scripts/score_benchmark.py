@@ -13,6 +13,7 @@ quietly under- or over-score the benchmark depending on which way you'd have gue
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -24,6 +25,10 @@ except ImportError:
     )
 
 ENDORSEMENT_THRESHOLD = 4.5
+# Evidence written while something was in progress goes stale when the fact changes
+# ("HF repo pending", "not yet on Perlmutter"). The scorer can't know the fact changed,
+# but it can flag wording that marks a claim as provisional.
+STALE_EVIDENCE = re.compile(r"\b(pending|not yet|todo|tbd|will be|to be (?:added|done|run))\b", re.IGNORECASE)
 CHECKLIST_CATEGORIES = [
     ("software_environment", "Software Environment"),
     ("problem_specification", "Problem Specification and Constraints"),
@@ -126,7 +131,32 @@ def score_rubric(rubric):
     return results, gaps, overall, endorsed
 
 
-def render_report(rubric, results, gaps, overall, endorsed):
+def provisional_evidence(rubric):
+    """(item id, field, text) for every evidence/notes string with provisional wording."""
+    found = []
+
+    def check(item_id, field, text):
+        if isinstance(text, str) and STALE_EVIDENCE.search(text):
+            found.append((item_id, field, text.strip()))
+
+    check("(top level)", "notes", rubric.get("notes"))
+    for key, value in rubric.items():
+        if key == "dataset" and isinstance(value, dict):
+            for item in value.get("fair", []) or []:
+                check(item.get("id"), "evidence", item.get("evidence"))
+            splits = value.get("splits_defined") or {}
+            check("splits_defined", "evidence", splits.get("evidence"))
+        elif key == "performance_metrics" and isinstance(value, dict):
+            check("performance_metrics", "definition_evidence", value.get("definition_evidence"))
+            check("performance_metrics", "quality_evidence", value.get("quality_evidence"))
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    check(item.get("id"), "evidence", item.get("evidence"))
+    return found
+
+
+def render_report(rubric, results, gaps, overall, endorsed, provisional=()):
     name = rubric.get("benchmark_name") or "(unnamed benchmark)"
     lines = [f"# Rubric score: {name}", ""]
     if rubric.get("scored_date"):
@@ -170,6 +200,17 @@ def render_report(rubric, results, gaps, overall, endorsed):
         lines.append("No unmet checklist items -- every category is maxed out.")
         lines.append("")
 
+    if provisional:
+        lines.append("## Evidence to re-check")
+        lines.append("")
+        lines.append(
+            "These strings use provisional wording (pending / not yet / TODO / will be). "
+            "If the fact has changed since they were written, update the evidence and re-score:"
+        )
+        for item_id, field, text in provisional:
+            lines.append(f"- `{item_id}` {field}: \"{text if len(text) <= 160 else text[:157] + '...'}\"")
+        lines.append("")
+
     motifs = rubric.get("motifs", {})
     if motifs:
         lines.append("## Motif tags")
@@ -205,7 +246,10 @@ def main():
     except RubricError as e:
         sys.exit(f"Cannot score yet -- {e}")
 
-    report = render_report(rubric, results, gaps, overall, endorsed)
+    provisional = provisional_evidence(rubric)
+    for item_id, field, _ in provisional:
+        print(f"warning: {item_id} {field} uses provisional wording -- re-check it is still true", file=sys.stderr)
+    report = render_report(rubric, results, gaps, overall, endorsed, provisional)
     print(report)
 
     if args.out:

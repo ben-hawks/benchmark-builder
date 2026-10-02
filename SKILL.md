@@ -17,14 +17,21 @@ MLCommons uses.
 **Before doing anything else, read `references/ontology.md` in full.** It has the exact
 wording of all five definitional elements and all six rubric categories -- you need the
 precise wording, not a paraphrase, both to interview well and to score correctly later.
-If the user's project resembles hls4ml/FPGA resource estimation, HEP, or another
-regression-heavy scientific ML surrogate-modeling task, also skim
-`references/wa-hls4ml-example.md` -- it's a real benchmark scored against this exact
-rubric, and shows what a complete answer to each element actually looks like in practice
-(down to how they handled a SMAPE division-by-zero edge case). Even outside that domain,
-its "required / strongly recommended / suggested" submission-guidelines pattern and its
-closing point about documenting known limitations rather than hiding them are worth
-reusing directly.
+Also skim `references/wa-hls4ml-example.md`, whatever the domain. It covers
+[axess-benchmark](https://github.com/ben-hawks/axess-benchmark), a real benchmark built
+with this skill:
+
+- it scores 5.00/5 on this rubric;
+- it's a validated Codabench bundle;
+- it reproduced its reference results on NERSC Perlmutter;
+- it lists the concrete mistakes found while building it (a wrong reference model, a
+  label mismatch, a metric formula that didn't reproduce the paper).
+
+Those mistakes are the reason for the verification steps in the interview below.
+
+**Before generating any benchmark files, read `references/repo-structure.md` in full.**
+It specifies the repository layout this skill recommends and the pipeline contract every
+benchmark follows. If the benchmark will run on a cluster, also read `references/hpc.md`.
 
 Once the standalone benchmark and its rubric score exist, also generate an MLCommons
 corpus entry (a separate, single-YAML-file deliverable for the real public corpus at
@@ -49,8 +56,11 @@ dataset/metrics/reference-solution behind it is just an empty shell.
 Don't open with a blank interview -- most of the five elements are usually already
 answered somewhere: a paper, a repo, a dataset sample, a README, a training script.
 Asking questions the materials already answer wastes the user's time and risks getting a
-worse answer than what's actually written down (`references/wa-hls4ml-example.md` was
-built entirely this way -- by reading the paper and repo, not by interviewing anyone).
+worse answer than what's actually written down. The first pass at wa-hls4ml was built
+entirely by reading the paper and repo, not by interviewing anyone. But reading isn't
+verifying: the paper's prose turned out to be wrong about which label its checkpoints
+were trained on (`references/wa-hls4ml-example.md`). Treat extracted claims about the
+reference solution as drafts until element D's checks confirm them.
 Do this, in order, before asking a single interview question:
 
 1. **Check what's already in front of you first.** Look at files already attached to the
@@ -68,7 +78,7 @@ Do this, in order, before asking a single interview question:
    Reference Solution and Software Environment questions") rather than a generic "send
    me everything" -- a targeted ask gets a faster, more complete answer.
 3. **Extract a draft answer for each of the five elements from what you have.** Read the
-   paper/code/data the way `references/wa-hls4ml-example.md` does, and write down --
+   paper/code/data and write down --
    with evidence (file, section, line) -- what you can determine for Problem
    Specification, Dataset, Performance Metrics, Reference Solution, and Documentation.
    Don't guess past what the material actually supports; an element the source material
@@ -96,7 +106,10 @@ wants -- confirm rather than asking cold:
    original form.
 2. **Formalize an existing project.** Code/data/results already exist, just not
    organized or documented as a benchmark. The artifact pass should already have mapped
-   most of the five elements -- confirm the draft, interview only real gaps.
+   most of the five elements -- confirm the draft, interview only real gaps. Propose
+   moving the existing code into the recommended structure ("Build the artifacts") and
+   say what that buys. Whether to reorganize or only add the missing pieces is the
+   user's call.
 3. **Score/audit an existing benchmark.** They want to know how it rates, not build
    anything new yet. Skip to "Score against the rubric" once the artifact pass has given
    you enough evidence per rubric item -- an un-evidenced score is worse than no score,
@@ -135,6 +148,22 @@ construction method (random / stratified / held out by construction), and confir
 non-overlap. If there's room for a held-out generalization set distinct from the main
 test set (wa-hls4ml's "exemplar" set is a good model for this), ask if one makes sense.
 
+While you're on the dataset, pin down what `data.py` and `data/SCHEMA.md` will need
+(details in `references/repo-structure.md`):
+
+- **Sample IDs.** Each sample's `sample_id` rule must be unique per split. Note any
+  fallbacks; one axess subset had `model_id` instead of `uuid`.
+- **Ground truth and forbidden inputs.** Which field is the ground truth, and which
+  fields are **not valid inputs** because they're labels or derived from them.
+- **Missing ground truth.** Samples without ground truth are excluded, never imputed.
+  Coverage is reported everywhere.
+- **Training-label filter vs scoring filter.** If upstream training used a different
+  sample filter than the benchmark's scoring, keep both. Use the upstream one for
+  anything that reproduces training, such as normalization stats (axess: 433,676 vs
+  433,674 train samples).
+- **Streaming.** Large files must be streamed (`ijson` with `use_float=True` for big
+  JSON arrays) and featurized once into a cache.
+
 **C. Performance Metric(s).** What's actually being measured, and does it capture what
 matters, not just what's easy to compute? This is the rubric category with the most
 nuance (two sub-scales, not a flat checklist -- see `references/ontology.md`), so push
@@ -142,6 +171,26 @@ past "we'll use accuracy" to: exact formula, how ties/edge-cases are handled (di
 by zero, empty predictions), whether it's computed per-class/per-target or aggregated,
 and whether one metric is enough or this is really a multi-dimensional/Pareto benchmark
 (e.g. accuracy under a latency bound).
+
+**Check that published numbers reproduce with the *stated* formula.** When a paper or
+README reports results:
+
+1. Recompute at least one published table cell from raw predictions, using the formula
+   exactly as documented.
+2. If it doesn't match, find the variant that does, then ask the user which one the
+   benchmark defines. Document the discrepancy either way.
+3. Also look for internal-consistency failures you can see without any code: a value
+   that contradicts another column of the same table, or an aggregate row that can't be
+   reconciled with its subgroup rows.
+
+In axess-benchmark:
+
+- paper Eq. 2 states SMAPE with ε = 1, but the paper's numbers only reproduce with
+  ε = 1e-8, as in the training code;
+- the dense DSP R² is printed as −0.74 while its own RMSE implies −111.74;
+- the "All" row can't be reconciled with its subgroups.
+
+The benchmark implements the stated ε = 1 and documents all three in `docs/VALIDATION.md`.
 
 **Metric choice must follow from the benchmark's own AI/ML motif -- there is no default
 metric suite to reach for.** Before suggesting anything, check the motif you tagged in
@@ -169,12 +218,74 @@ requirements, and every metric from element C actually evaluated and reported fo
 More than one reference solution (a simple baseline plus a stronger one, as in
 wa-hls4ml's MLP/GNN/Transformer trio) strengthens the benchmark but isn't required.
 
+**Ask: "Does the benchmark evaluate only predictions from given or pretrained models, or
+does it also train or reproduce training?"** Don't assume either way. Score-only was
+axess-benchmark's choice, not a rule. The answer shapes the generated repo
+(`references/repo-structure.md`, "Score-only vs includes training"):
+
+- **score-only** has no `train.py`, and weights come from `weights/MANIFEST.json`;
+- **includes training** gets `train.py`, training jobs, and training-reproduction
+  checks.
+
+The answer also feeds the Codabench mode decision later. The `predict → score_all.sh`
+contract is the same either way.
+
+**Verify the reference solution before building anything on it.** These checks are
+mandatory, and their results go in `docs/VALIDATION.md`:
+
+1. **Identity and weights.** Confirm each checkpoint is the model the paper describes:
+   - load it with `strict=True` into the paper's architecture class;
+   - record its sha256 in `weights/MANIFEST.json`;
+   - find out where the weights actually live. They may not be published at all, or be a
+     loose file or a release asset.
+
+   An earlier axess pass "validated" a GNN that turned out to be rule4ml's bundled GIN
+   model, not the paper's GATv2 GNN.
+2. **Training label vs scored label.** Ask: "Which field or label definition did each
+   reference model train on, and is it the same one the metric scores?"
+   - Check it **on data**, not from paper prose: match the training arrays' label rows
+     against each candidate field.
+   - In axess, the original GNN/Transformer matched `hls_resource_report` on 100% of
+     rows and the benchmark's ground truth `resource_report` on 0%. Scored on the
+     benchmark's truth, they were worse than predicting the mean, and had to be
+     retrained.
+   - A reference solution scored against a different target than it was trained on
+     isn't a valid reference (`references/ontology.md`).
+3. **The whole inference procedure.** Weights + preprocessing + statistics +
+   post-processing are all part of the reference solution:
+   - vendor preprocessing verbatim, with a bit-equivalence test against upstream;
+   - ship small derived artifacts the checkpoints don't contain (normalization stats,
+     prediction caps) in `weights/`. Rebuild them if necessary, and verify the rebuild
+     reproduces the checkpoint's own stored metrics;
+   - include post-processing that lives only in upstream eval code. In axess that was a
+     clip at the training maximum.
+4. **Per-sample agreement.** Where upstream predictions exist, compare per sample, not
+   just aggregate metrics (axess: ≤2.8e-4 relative over 92,933 samples). Then record
+   golden outputs on fixture samples (`tests/test_pipeline.py`), which is the portable
+   form of this check.
+5. **Reference vs auxiliary.** List exactly which weights are reference solutions and
+   which are only auxiliary comparisons. Auxiliary models are still run and scored, but
+   they're marked as auxiliary in the leaderboard, `reference_solution/README.md` and the
+   manifest (`references/repo-structure.md`, "Conventions").
+
 **E. Documentation and Reproducible Protocol.** Can someone outside the team actually
 reproduce the reference solution's numbers from a clean environment? This means
 numbered reproduction steps, a pinned/containerized environment, and prose explaining
 motivation and scientific background -- not just API docs. If there's no paper yet,
 say so; that's one specific, nameable gap (Documentation category, "an academic paper
 about the benchmark exists") rather than a vague documentation weakness.
+
+**Ask which machine(s) the benchmark will run on**: a laptop, a workstation, or which
+cluster(s). Don't assume Perlmutter or any other site. For each cluster, ask the
+questions in `references/hpc.md` ("What to ask per machine"), then generate the generic
+Slurm templates tuned for it, with one machine profile each.
+
+For citations:
+
+- Prefer the published DOI over the preprint once one exists.
+- Fetch the metadata from `https://doi.org/<doi>` with `Accept: application/x-bibtex`
+  rather than typing it in.
+- When citing sections and equations, check the numbering against the published version.
 
 Also ask about **motif tagging** while you're here (see `references/ontology.md` Part
 3) -- scientific domain(s) and exactly one AI/ML motif. It's not rubric-scored, but it's
@@ -183,29 +294,59 @@ question now versus an afterthought later.
 
 ## Build the artifacts
 
-As the interview answers each element, generate the real files -- don't wait until the
-end to write everything at once, since later answers often reveal earlier files need a
-revision. A minimal, complete layout:
+As the interview answers each element, generate the real files. Don't wait until the
+end to write everything at once, since later answers often reveal that earlier files need
+revising.
+
+**Propose the recommended repository structure by default, and explain why.** The
+recommended structure is specified piece by piece in `references/repo-structure.md`,
+generalized from axess-benchmark. In summary:
 
 ```
-<benchmark-name>/
-├── README.md                    # from assets/benchmark_card_template.md
-├── data/                        # or a documented pointer to externally-hosted data
-│   └── SCHEMA.md                # per-field documentation of a sample
-├── reference_solution/
-│   ├── README.md                # architecture/method, hyperparameters, requirements
-│   └── ...                      # actual code
-├── metrics/
-│   └── score.py                 # adapted from scripts/metrics.py for this benchmark's targets
-├── environment.yml / requirements.txt / Dockerfile
-└── SUBMISSION.md                # from assets/submission_report_template.md
+<repo>/
+├── README.md, SUBMISSION.md, CITATION.cff, LICENSE, rubric.yaml, SCORE_REPORT.md
+├── pyproject.toml, requirements*.txt (one per stack that must stay separate), .gitattributes
+├── data/SCHEMA.md
+├── docs/VALIDATION.md, docs/<MACHINE>.md
+├── reference_solution/README.md          documentation only
+├── reference_results/                    committed LEADERBOARD.md + <split>/<model>/metrics
+├── weights/MANIFEST.json (+ small derived artifacts)
+├── src/<pkg>/  data, cache, [features, stats], models/, [train], predict, truth, score, report, submission
+├── scripts/    fetch_data.py, fetch_weights.py, score_all.sh
+├── <hpc>/      (optional) generic Slurm, tuned per machine
+├── codabench/  (optional) README, build_bundle.py, bundle_src/
+└── tests/      score, golden pipeline, [features equivalence], submission, fixtures/
 ```
 
-Adapt this to what the artifact pass found rather than forcing a rewrite -- when
-substantial code/data already existed, prefer adding the missing pieces (a schema doc, a
-metrics script, a benchmark card) over restructuring code that already works. A benchmark
-that scores well without a disruptive reorg is a better outcome than one that scores well
-after breaking everyone's existing workflows.
+Every benchmark's run follows the same **pipeline contract**:
+
+```
+fetch_data → cache → [train] → predict (per model, per split) → score_all.sh (truth, score, leaderboard, submissions)
+```
+
+The conventions are `<results>/<split>/predictions_<model>.csv` (all samples),
+`truth.csv` (scored samples only), `<model>/metrics.json`, `LEADERBOARD.md`, and
+`codabench/<model>_submission.zip`. A participant's model plugs in by writing
+`predictions_<name>.csv`; nothing else changes. Tell the user that in those words.
+
+**Generate the tree; don't copy a skeleton.** Which optional pieces exist, which models,
+splits and targets there are, whether there's training, and which machines and submission
+mode apply all vary per benchmark. Build each file from its contract in
+`references/repo-structure.md`, and adapt the snippets in `assets/repo/`,
+`assets/hpc/slurm/` and `assets/codabench/` where they fit.
+
+**The structure is recommended strongly, but it's not required.** When you propose it,
+explain what it buys:
+
+- one uniform pipeline for every model;
+- participants plug in by writing one CSV;
+- golden tests make a new machine verifiable before any job runs;
+- Codabench submissions and the bundle come out of the same truth function, so they
+  can't drift from the benchmark.
+
+If the user wants a different layout, or existing working code makes a reorganization
+cost more than it buys, deviate. Keep the pipeline contract even then, and note the
+deviation in the README.
 
 ## Score against the rubric
 
@@ -240,6 +381,20 @@ scorer after each fix so the user sees the number move -- that feedback loop is 
 convincing than a wall of remaining TODOs. Stop when the user is satisfied with the
 score (they may not need or want 5/5 or endorsement-level on every category -- that's
 their call, not a target to impose).
+
+**Keep the self-score honest over time.** Whenever a verified fact changes, re-read
+**every** `evidence:` string in `rubric.yaml`, not just the item you were working on:
+
+- a dataset gets published;
+- a cluster run completes;
+- a reference model is replaced;
+- a published table turns out not to reproduce.
+
+In axess, "HF repo pending", "not yet on Perlmutter" and "paper Table 4 reproduced" all
+went stale this way without the score changing. Keep the `notes:` block as dated caveats
+("re-scored 2026-10-02 after ..."). `scripts/score_benchmark.py` lists any evidence using
+provisional wording ("pending", "not yet", "TODO", "will be") under "Evidence to re-check".
+Resolve each one, or confirm it's still true.
 
 ## Generate an MLCommons corpus entry
 
@@ -323,89 +478,167 @@ in full first.
 ## Adapt into a Codabench Competition Bundle
 
 Only start this once the standalone benchmark exists (dataset, metrics, reference
-solution, docs) -- this phase reuses that work, it doesn't replace it. Read
-`references/codabench.md` in full first; it's grounded in a real, verified Codabench
-example bundle (not just the docs prose, which turned out to have gaps against actual
-behavior), and has the exact directory/file contracts this step depends on. Skim
-`assets/codabench/example_bundle/` alongside it -- a complete, self-tested worked
-example to pattern-match against, the Codabench equivalent of
-`references/wa-hls4ml-example.md`.
+solution, docs). This phase reuses that work; it doesn't replace it. Read
+`references/codabench.md` in full first. It's grounded in real, verified Codabench
+bundles (not just the docs prose, which has gaps against actual behavior), and has the
+exact directory/file contracts this step depends on. Two worked examples to
+pattern-match against:
 
-1. **Decide code submission vs. results submission** (see `references/codabench.md`'s
-   "big design decision" section) -- ask the user rather than assuming. This changes
-   whether an `ingestion_program/` exists at all, so it has to be settled before
-   generating anything.
-2. **Derive what's already known** from the standalone benchmark -- don't ask for any
-   of this again: dataset splits (→ per-phase `input_data`/`reference_data`), metrics
-   (→ `scoring_program/scoring.py`, adapted from whatever `scripts/metrics.py`-derived
-   code the standalone benchmark already uses, plus leaderboard columns), the reference
-   solution (→ `solution/`), and the benchmark card content (→ `pages/*.md`).
-3. **Ask for what only the user can supply**, sorted by `references/codabench.md`'s
-   "Required vs. optional" list -- title/logo/terms/phase-dates/submission-mode are
-   real blockers, worth asking together in one pass; most of what's left has sane
-   defaults, offer them and move on unless the user cares. **Never author real
-   participation terms** -- generate an obviously-marked placeholder (see
-   `assets/codabench/example_bundle/pages/terms_and_conditions.md` for the exact
-   pattern) and say plainly that it must be replaced before the competition goes live.
-4. **Decide the Docker image** using `references/codabench.md`'s "Docker image"
-   section: check the reference solution's real dependency file against the stock-image
-   table first -- most benchmarks need nothing custom. Only if a stock image doesn't
-   cover it, write one from `assets/codabench/Dockerfile.template` (CPU) or
-   `Dockerfile.gpu.template` (GPU) and save it as `Dockerfile` at the bundle root; the
-   validator's tier 4 then builds and tests it automatically (all local and reversible,
-   no confirmation needed -- see the next section). Get **explicit confirmation before
-   `docker push`** -- publishing an image to a public registry is a publish action, not
-   a default-and-forget step, and that confirmation is per-instance even if the user
-   approved a push earlier in this same conversation. The validator never pushes.
-5. **Generate the bundle** following the directory layout in `references/codabench.md`,
-   vendoring any shared metric code into `scoring_program/` (and `ingestion_program/` if
-   it needs any) rather than importing from outside the bundle -- both directories get
-   zipped and uploaded independently, so anything they need must live inside them.
-   Write `ingestion.py`/`scoring.py` using the `CODABENCH_ROOT` environment-variable
-   convention (default `/app`, override for local testing) rather than hardcoding
-   `/app` the way Codabench's own raw examples do -- this is what makes the next section
-   possible without needing Docker.
+- `assets/codabench/results_example/`, a **results submission** built the
+  axess-benchmark way: hand-written `bundle_src/` plus `build_bundle.py`;
+- `assets/codabench/example_bundle/`, a **code submission**.
+
+1. **Decide code submission vs. results submission from the benchmark's scope and data
+   visibility.** Ask the user rather than assuming. This decides whether an
+   `ingestion_program/` exists at all, so settle it before generating anything.
+   - Score-only with public ground truth points to a **results submission**. That's what
+     axess chose: a code submission couldn't hide the answers either, and it would have
+     needed GPU workers and a custom image.
+   - A benchmark that evaluates training or a method, or that has hidden data, points
+     to a **code submission**.
+   - Revisit the element D answer (score-only vs includes training) here.
+
+   Write the scoring program so it works for both modes. It does if the ingestion
+   program writes the same prediction files a results submission would upload.
+2. **The benchmark pipeline must emit upload-ready submissions.** The last step of
+   `score_all.sh` runs `src/<pkg>/submission.py`, which writes
+   `<results>/codabench/<model>_submission.zip` for every model:
+   - exactly the scored samples;
+   - files at the zip root;
+   - the same checks as the scoring program;
+   - no zip and a non-zero exit for incomplete predictions.
+
+   A participant who ran the standalone benchmark already has their upload. Adapt
+   `assets/repo/submission.py`.
+3. **Build the bundle from the benchmark with `codabench/build_bundle.py`**, adapted from
+   `assets/codabench/build_bundle.py`. Never hand-copy data into the bundle.
+   - Hand-written, versioned files live in `codabench/bundle_src/`: `competition.yaml`,
+     logo, `pages/`, `scoring_program/` with vendored metrics, and `starting_kit/` docs.
+   - `build_bundle.py` generates the hidden truth, scored-ID lists, `solution/`,
+     `sample_submission.zip`, and a weak-baseline zip.
+   - All generated files come from **the same truth function the benchmark uses**, so
+     they can't diverge from it.
+   - `codabench/build/` stays out of git.
+4. **Derive what's already known** from the standalone benchmark, and don't ask for any
+   of it again:
+   - splits go to `reference_data` (plus `input_data` for code submission);
+   - metrics go to `scoring_program/scoring.py`, vendored from `src/<pkg>/score.py`,
+     plus leaderboard columns;
+   - the reference solution goes to `solution/`;
+   - the benchmark card goes to `pages/*.md`.
+5. **Rank on a bounded, primary-split metric.** Leaderboard column index 0 is the
+   ranking key. Don't make it a metric that's unbounded below, such as R² on an
+   out-of-distribution split: axess's training-mean baseline scored −2651 there. Show
+   such metrics as extra columns instead.
+6. **Write the scoring program to the contract** in `references/codabench.md`
+   ("Scoring program contract"):
+   - a module-level `SUBMISSION_FILES = [...]`, which the validator reads;
+   - literal `os.path.join(prediction_dir, "<name>")` paths;
+   - tolerate one wrapping folder and ignore extra rows;
+   - fail with a message naming the problem on a missing file, a missing sample, a
+     non-finite value, or a duplicate ID;
+   - write NaN as `null` in `scores.json`.
+7. **Ask for what only the user can supply**, sorted by `references/codabench.md`'s
+   "Required vs. optional" list. Title, logo, terms, phase dates and submission mode are
+   real blockers, so ask for them together in one pass. Most of what's left has sane
+   defaults; offer them and move on unless the user cares.
+
+   **Never author real participation terms.** Generate an obviously-marked placeholder
+   (pattern: `assets/codabench/example_bundle/pages/terms_and_conditions.md`) and say
+   plainly that it must be replaced before the competition goes live. A placeholder is
+   acceptable for an upload to a dev instance only if the user confirms that's what it's
+   for.
+8. **Decide the Docker image** using `references/codabench.md`'s "Docker image" section.
+   Check the reference solution's real dependency file against the stock-image table
+   first; most benchmarks need nothing custom (a results-submission scoring program
+   usually needs only numpy and pandas).
+
+   Only if a stock image doesn't cover it, write one from
+   `assets/codabench/Dockerfile.template` (CPU) or `Dockerfile.gpu.template` (GPU) and
+   save it as `Dockerfile` at the bundle root. The validator's tier 4 then builds and
+   tests it automatically. That's all local and reversible, so it needs no confirmation
+   (see the next section).
+
+   Get **explicit confirmation before `docker push`**. Publishing an image to a public
+   registry is a publish action, not a default-and-forget step, and the confirmation is
+   per instance, even if the user approved a push earlier in this conversation. The
+   validator never pushes.
+9. **Generate the bundle** following the directory layout in `references/codabench.md`.
+   - Vendor any shared metric code into `scoring_program/` (and `ingestion_program/` if
+     it needs any) rather than importing from outside the bundle. Both directories are
+     zipped and uploaded independently, so anything they need must live inside them.
+   - Write `ingestion.py`/`scoring.py` with the `CODABENCH_ROOT` environment-variable
+     convention (default `/app`, overridden for local testing) rather than hardcoding
+     `/app` the way Codabench's own raw examples do. That's what makes the next section
+     possible without Docker.
 
 ## Build and validate an example submission bundle
 
 Every Codabench competition bundle needs a submission a participant can look at and
 run, and this doubles as the fastest way to prove the bundle actually works end to end.
 
-1. **Reuse the reference solution as the example submission** -- zip it (root files
+1. **Reuse the reference solution as the example submission.** Zip it flat (root files
    only, no wrapping folder: `zipfile.ZipFile(...).write(path, arcname=filename)`, not a
-   recursive directory zip) into `starting_kit/sample_submission.zip`, exactly like
-   `assets/codabench/example_bundle/solution/model.py` becomes
-   `starting_kit/sample_submission.zip`. If a weaker, more obviously-a-starting-point
-   baseline would help participants more than handing them the full reference solution
-   immediately, put that in `starting_kit/model.py` instead and keep the reference
-   solution's zip as a separate "here's a working example" download -- both patterns
-   are demonstrated in the example bundle.
+   recursive directory zip) into `starting_kit/sample_submission.zip`.
+   - **Results submission:** `build_bundle.py` does this from the reference model's
+     predictions.
+   - **Code submission:** `solution/model.py` becomes the zip, as in
+     `assets/codabench/example_bundle/`.
+
+   If a weaker, more obviously-a-starting-point baseline would help participants more
+   than the full reference solution, put that in `starting_kit/model.py` and keep the
+   reference solution's zip as a separate "working example" download. The example
+   bundle demonstrates both patterns.
 2. **Validate with `scripts/validate_codabench_bundle.py`**:
    ```bash
    python scripts/validate_codabench_bundle.py <bundle_dir> --submission <sample_submission.zip> --task-index 0
    ```
-   Read its own docstring for what each of its four tiers checks. Tiers 1-3 need no
-   Docker and should always be run before calling a bundle finished. Fix whatever it
-   flags -- a leaderboard column key that doesn't match `scores.json` is the single most
-   common break, and tier 3 catches it by actually producing `scores.json` and diffing
-   its keys against every configured column, not by guessing.
+   Read its docstring for what each of its four tiers checks. Tiers 1-3 need no Docker,
+   so always run them before calling a bundle finished. Fix whatever they flag:
+   - The most common break is a leaderboard column key that doesn't match `scores.json`.
+     Tier 3 catches it by actually producing `scores.json` and diffing its keys against
+     every configured column.
+   - Tier 2 reads the scoring/ingestion program's declared `SUBMISSION_FILES` contract,
+     falling back to a source regex.
+   - Tier 3 runs on the host's Python, so a missing host package (numpy, pandas) is
+     reported as a host problem, not a bundle failure.
 
-   **If Docker is available on this machine, run tier 4 as well** -- add `--docker`:
+   For a results submission, also validate every zip the benchmark pipeline wrote
+   (`<results>/codabench/*_submission.zip`), plus a few deliberately malformed ones:
+   - a missing sample;
+   - a NaN;
+   - a missing file;
+   - a wrapping folder.
+
+   Each malformed zip must fail with a message naming the problem; the wrapping folder
+   must be tolerated by the scoring program.
+
+   **If Docker is available on this machine, run tier 4 as well**, by adding `--docker`:
    ```bash
    python scripts/validate_codabench_bundle.py <bundle_dir> --submission <sample_submission.zip> --docker
    ```
-   It builds the bundle's `Dockerfile` if it has one (otherwise uses/pulls
-   `competition.yaml`'s `docker_image`), then runs the real ingestion and scoring
-   programs inside the container against Codabench's actual `/app/...` layout. That's
-   the only tier that catches "works on my machine, missing a dependency in the declared
-   image" -- a class of failure tiers 1-3 structurally cannot see, since they run
-   against the host's own Python. Check for Docker rather than assuming: the tier
-   self-skips with the reason when the daemon isn't reachable, so just run it and read
-   the output. Everything it does is local and reversible (build, pull, run, and
-   `--rm-built-image` to clean up an image it built); it never pushes.
-3. **Report the actual scores**, not just "validation passed" -- show the user the
+   - It builds the bundle's `Dockerfile` if it has one (otherwise it uses or pulls
+     `competition.yaml`'s `docker_image`), then runs the real ingestion and scoring
+     programs inside the container against Codabench's actual `/app/...` layout.
+   - It's the only tier that catches "works on my machine, but the declared image is
+     missing a dependency". Tiers 1-3 can't see that, since they run on the host's own
+     Python.
+   - Check for Docker rather than assuming. The tier skips itself and says why when the
+     daemon isn't reachable, so just run it and read the output.
+   - "Not reachable" is often the client-to-engine bridge, not the engine itself. Use
+     `--docker-host` or run from WSL/Linux (`references/codabench.md`, "Tier 4
+     troubleshooting").
+   - Everything it does is local and reversible: build, pull, run, and
+     `--rm-built-image` to clean up an image it built. It never pushes.
+3. **Report the actual scores**, not just "validation passed". Show the user the
    `scores.json` values the example submission produced, the same way the standalone
-   benchmark's scoring step reports real numbers rather than a pass/fail flag. If the
-   reference solution and a deliberately-weak baseline produce meaningfully different
-   scores, that's good evidence the metric actually discriminates quality; if they don't,
-   flag it as being worth checking before calling the bundle done.
+   benchmark's scoring step reports real numbers rather than a pass/fail flag.
+
+   **Run the discrimination check every time:** score the reference solution and the
+   weak-baseline zip from `build_bundle.py`, and report both. axess: mean R² 0.809 vs
+   0.000, SMAPE 10.3% vs 114%. If they don't separate clearly, flag it before calling
+   the bundle done. Also check that Codabench's scores for the pipeline's zips equal the
+   benchmark's own `metrics.json`.
+4. **Record the validation** in `codabench/README.md`: the mode, the phases, the ranking,
+   a tier-by-tier result table with the date, the discrimination numbers, and a
+   pre-upload checklist (terms, logo, image).
