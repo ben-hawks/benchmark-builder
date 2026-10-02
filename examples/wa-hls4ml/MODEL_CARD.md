@@ -2,20 +2,21 @@
 language:
 - en
 tags:
+- project:genesis
+- project:AXESS
 - type:model
-- science:particlephysics
+- science:particlephysics, computing
 - risk:general
-# project:genesis / project:<team> tags omitted: whether this model belongs to a Genesis
-# Mission project team is not established by the sources; ask the authors.
 license: cc-by-nc-4.0
+license_link: https://creativecommons.org/licenses/by-nc/4.0/
 datasets:
-    - https://huggingface.co/datasets/fastmachinelearning/wa-hls4ml
+    - https://huggingface.co/datasets/fastmachinelearning/wa-hls4ml (train/val/test splits; mirror https://amsc.fnal.gov:2880/amsc/public/axess/wa-hls4ml/)
 metrics:
-    - training_loss   # MSE in log/z-scored target space (train.log in the release)
-    - validation_loss # same; drives ReduceLROnPlateau and early stopping
-    - r_squared       # evaluation, per target and per group (axess-benchmark score.py)
-    - smape
-    - rmse
+    - training_loss (MSE on log-transformed, z-scored targets; logged in the release's train.log)
+    - validation_loss (same; drives ReduceLROnPlateau and early stopping)
+    - R² (coefficient of determination), per target and per group (axess-benchmark score.py)
+    - SMAPE (symmetric mean absolute percentage error, ε = 1), per target and per group (axess-benchmark score.py)
+    - RMSE (root mean square error), per target and per group (axess-benchmark score.py)
 ---
 
 # wa-hls4ml GNN (GATv2), retrained on post-synthesis resources
@@ -134,10 +135,12 @@ training environment was a Python 3.11 venv; see `5_26_requirements.txt` in
 
 ## Model License
 
-CC-BY-NC 4.0 for the surrogate models, per the `wa-hls4ml-paper` README. The training and
-model **code** is Apache-2.0 (the `wa_hls4ml_models` LICENSE). The `resource-report-retrain`
-release doesn't state a separate license for its weights, so **confirm with the authors**
-that the paper's model license covers the retrained checkpoint.
+The weights are licensed CC-BY-NC 4.0
+([license text](https://creativecommons.org/licenses/by-nc/4.0/)), the same license as the
+paper's surrogate models in the `wa-hls4ml-paper` README. The authors confirmed on
+2026-10-02 that it covers the retrained checkpoint; the `resource-report-retrain` release
+doesn't state it. The training and model **code** is Apache-2.0 (the `wa_hls4ml_models`
+LICENSE).
 
 ## Contact Info and Model Card Authors
 
@@ -334,7 +337,6 @@ Per-group tables are in `reference_results/<split>/gnn/METRICS.md`.
 
 This card follows the live GEAR Model Card v1 template
 (https://gear.doe.gov/rfa-teams/ai-and-agents/model-card-template, file fetched
-2026-10-02). The template's front matter now includes `project:genesis` and team tags,
-which are left out here (see the comment in the front matter). It was re-targeted on
-2026-10-02 from an earlier draft (2026-08-28) that described the paper's original
-HLS-estimate checkpoint.
+2026-10-02). The front matter tags it as a Genesis Mission model of the AXESS team, as the
+authors confirmed. It was re-targeted on 2026-10-02 from an earlier draft (2026-08-28) that
+described the paper's original HLS-estimate checkpoint.
