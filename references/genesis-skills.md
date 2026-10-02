@@ -121,6 +121,17 @@ Fallback: `references/doe-gear-cards.md` ("If the workflow can't be run").
 - `scripts/generate_croissant_from_csv.py` only reads CSV. For other formats (JSON, HDF5,
   Parquet, images), write `croissant.json` by hand from `data/SCHEMA.md` and then run its
   validator.
+- What a generated file still needs (checked on a CSV at the pinned commit; it passed both
+  the script checks and `mlcroissant` parsing):
+  - `contentUrl` is the local file name. Replace it with the dataset's real download URL
+    (the one `scripts/fetch_data.py` uses) before publishing.
+  - Without `--cite-as`, `mlcroissant` warns that `citeAs` is missing. Pass the dataset's
+    BibTeX.
+  - `mlcroissant` also warns that the `@context` isn't standard (an extra
+    `equivalentProperty` key). That's a warning only.
+  - Run the validator with `mlcroissant` installed (temporary venv or `uv run --with
+    mlcroissant`). Without it, only the required-field checks run, and the script still
+    prints OK.
 - Its rules: install packages only in a temporary venv, and never run a global
   `pip install`.
 - A `croissant.json` with per-file `sha256`, field-level `recordSet`s and an SPDX license
@@ -142,6 +153,9 @@ Fallback: `references/doe-gear-cards.md` ("If the workflow can't be run").
   `truth.csv` on `sample_id` first, and pass the joined file as both inputs.
 - It runs with `uv run --with ...`. If `uv` isn't available, use a temporary venv with the
   same packages.
+- It reads at most 500,000 rows without warning, and it refuses inputs outside the current
+  directory (`--allowed-root`) and symlinks.
+- It writes its artifacts next to its input files.
 - See `references/metrics-and-uq.md` for which outputs to compare and when calibration
   metrics belong in the benchmark itself.
 

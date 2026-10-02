@@ -45,18 +45,20 @@ landing page's own links rather than guessing a file path:
 **The Dataset/Data Card is a materially different shape from Model/Agent Card
 — confirmed by actually fetching it, not assumed.** Model Card and Agent Card
 are each a single downloadable markdown template you fill in by hand. The
-Data Card is not: the FAIR page's own link goes to a full external skill
-(`AI-ModCon/BaseData_Skills`'s `datacard-generator`) implementing the
-**Genesis Mission Data Card v1.2** schema — a large (100+ KB), multi-section
-template (Discoverability/Accessibility/Interoperability/Reusability/
-Governed Use/AI Usability) with its own directory-introspection script and,
-critically, **mandatory live identifier verification** (ORCID/ROR/DOI/OSTI,
-checked against live APIs) before the tool considers a card valid. Two real
-consequences:
+Data Card is not: the FAIR page's own link goes to a full skill,
+`datacard-generator`, implementing the **Genesis Mission Data Card v1.2**
+schema — a large (100+ KB), multi-section template
+(Discoverability/Accessibility/Interoperability/Reusability/Governed Use/AI
+Usability) with its own directory-introspection script and, critically,
+**mandatory live identifier verification** (ORCID/ROR/DOI/OSTI, checked against
+live APIs) before the tool considers a card valid. The FAIR page links the
+older standalone repo `AI-ModCon/BaseData_Skills`; the same skill now lives in
+the Genesis catalog at `skills/basedata-skills/datacard-generator` in
+`AI-ModCon/genesis-skills`. Use that copy. Two real consequences:
 
-- **Prefer running the generator's workflow properly**, even when it isn't
-  installed as a skill. Clone `AI-ModCon/BaseData_Skills`, read
-  `skills/datacard-generator/SKILL.md`, and follow its steps:
+- **Run the generator's workflow properly**: load `datacard-generator` as
+  `references/genesis-skills.md` describes (installed, `skill-search`, or a
+  pinned clone), read its `SKILL.md` in full, and follow its steps. In outline:
   1. introspect the data (`scripts/introspect.py`);
   2. resolve any DOI and apply its provenance gate (a paper DOI is related work,
      not the dataset's identity);
@@ -67,10 +69,14 @@ consequences:
   6. validate with
      `uv run --with linkml linkml-validate -s scripts/genesis_datacard.yaml -C GenesisDatacardClass <frontmatter.yaml>`.
 
+  Hand it what element B already settled (splits, license, FAIR answers, the
+  `croissant.json` if there is one) so it confirms rather than asks again.
+
   `examples/wa-hls4ml/genesis_datacard_wa_hls4ml.md` is a worked example that
-  validates clean. Building it surfaced facts no hand-filled card had: 3 `null`
-  array entries in train/val, record counts that differ from the dataset card's,
-  and a public dCache mirror.
+  validates clean (built with the same workflow from `BaseData_Skills@7ef7694`).
+  Building it surfaced facts no hand-filled card had: 3 `null` array entries in
+  train/val, record counts that differ from the dataset card's, and a public
+  dCache mirror.
 - **If the workflow can't be run** (no network for the identifier checks, or no
   way to run the validator), a hand-filled card following the v1.2 outline is
   still worth producing. But **every field the tool would verify live (identifiers,

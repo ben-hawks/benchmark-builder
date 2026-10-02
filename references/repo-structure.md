@@ -57,6 +57,7 @@ marked *(optional)* depend on the benchmark (see "When the optional pieces apply
 ├── requirements*.txt          one per environment that must stay separate (only if stacks conflict)
 ├── .gitattributes             `* text=auto eol=lf` plus binary types
 ├── data/SCHEMA.md             per-field schema: which field is ground truth, which fields are NOT valid inputs
+├── data/croissant.json        (optional) Croissant metadata, generated or validated with the genesis croissant-validator skill
 ├── docs/
 │   ├── VALIDATION.md          how the reference solutions were verified (numbers, dates, hardware)
 │   └── <MACHINE>.md           (optional) running on a target cluster: paths, setup, jobs, troubleshooting
@@ -202,6 +203,13 @@ software versions. This is what turns "we ran it" into evidence. Sections, as ap
 6. Gaps found in the data or preprocessing, and how this benchmark handles them.
 7. Runs on each target machine: job IDs, exit codes, and agreement with
    `reference_results/`.
+8. Independent metric recomputation: the reference model's metrics recomputed with a
+   second implementation (the genesis `uq-metrics-evaluator` skill for standard
+   regression/classification metrics), and any disagreement explained
+   (`references/metrics-and-uq.md`).
+9. Tools used: every external skill or tool that produced or checked something here
+   (e.g. `datacard-generator`, `croissant-validator`, `uq-metrics-evaluator`, the
+   lm-eval-harness skills), with its commit, so the checks can be re-run.
 
 Anything superseded (e.g. checkpoints that were reference solutions until a retrain) gets
 a dated "History" section, not deletion.
@@ -357,6 +365,8 @@ zip chosen for the task, all from the **same truth function** as the benchmark. 
 | `train.py` + training jobs | the benchmark evaluates or reproduces training (next section) |
 | `<hpc>/`, `docs/<MACHINE>.md` | the full run needs a cluster, or the user names target machines |
 | `codabench/` | the user wants a Codabench competition |
+| `data/croissant.json` | the dataset has no Croissant metadata where it's hosted (Hugging Face serves its own) |
+| `tasks/<task>/` | an LLM benchmark (`references/llm-benchmarks.md`) |
 | multiple `requirements*.txt` | reference models need conflicting stacks |
 | `<hpc>/stack.sh` hooks | the benchmark's stack needs environment settings or fixes on a machine (documented in `docs/<MACHINE>.md`) |
 | auxiliary column/rows | comparison models that aren't reference solutions are run |
