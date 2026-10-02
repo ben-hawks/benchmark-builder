@@ -1,0 +1,20 @@
+#!/bin/bash
+# OPTIONAL: only for benchmarks that include training (references/repo-structure.md,
+# "Score-only vs includes training"). Writes checkpoints + derived artifacts to
+# $BENCH_WEIGHTS for the inference jobs. Resources: BENCH_QS_TRAIN.
+# ADAPT: the model list, the training/validation split names, seeds, and the launcher
+# (mpiexec on PBS sites, or the framework's own multi-GPU/multi-node launcher).
+#PBS -N bench-train
+#PBS -j oe
+set -euo pipefail
+# PBS starts the job in $HOME from a copy of this script, so locate env.sh through the
+# repo path submit.sh exports with qsub -v.
+source "${BENCH_REPO:-$PBS_O_WORKDIR}/${BENCH_HPC:-pbs}/env.sh"
+bench_activate
+mkdir -p "$BENCH_WEIGHTS"
+
+for model in model_a; do
+    python -m benchpkg.train --model "$model" --cache-dir "$BENCH_CACHE" \
+        --train-split train --val-split val --device "$BENCH_GPU_DEVICE" \
+        --out-dir "$BENCH_WEIGHTS" --seed "${BENCH_SEED:-0}"
+done

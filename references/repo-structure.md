@@ -10,7 +10,7 @@ to ≤2.4e-4 relative. Treat it as the worked example to pattern-match against.
 **Generate the tree. Don't copy a skeleton.** Which optional pieces exist, which models,
 splits and targets there are, whether there's a training step, and which machines it
 runs on all vary per benchmark. Build each file from its contract below, adapted to this
-benchmark. The small reusable snippets in `assets/repo/`, `assets/hpc/slurm/` and
+benchmark. The small reusable snippets in `assets/repo/`, `assets/hpc/` and
 `assets/codabench/` are starting points to adapt, not files to drop in unchanged.
 
 **Recommended, not required.** Propose this layout and explain what it buys:
@@ -83,7 +83,7 @@ marked *(optional)* depend on the benchmark (see "When the optional pieces apply
 │   ├── fetch_data.py          download + record the exact dataset revision
 │   ├── fetch_weights.py       download + verify sha256 from weights/MANIFEST.json
 │   └── score_all.sh           truth → score every predictions_*.csv → leaderboard → submission zips
-├── <hpc>/                     (optional) env.sh, stack.sh, setup.sh, submit.sh, jobs/*.sbatch, profiles/
+├── <hpc>/                     (optional) env.sh, stack.sh, setup.sh, submit.sh, jobs/*.sbatch|*.pbs, profiles/
 ├── codabench/                 (optional)
 │   ├── README.md              mode, phases, ranking, validation record, pre-upload checklist
 │   ├── build_bundle.py        bundle_src + generated truth/solution/ids → build/competition_bundle.zip
@@ -142,7 +142,7 @@ A participant's model plugs in by writing its predictions for each split and re-
 
 Paths come from environment variables with a benchmark-specific prefix (axess: `WA_`; the
 snippets use `BENCH_`, so rename them): `<P>_DATA`, `<P>_CACHE`, `<P>_WEIGHTS`,
-`<P>_RESULTS`, `<P>_SPLITS`. The same commands then work on a laptop and in Slurm jobs.
+`<P>_RESULTS`, `<P>_SPLITS`. The same commands then work on a laptop and in batch jobs (Slurm or PBS).
 
 ## Per-file contracts
 
@@ -305,12 +305,13 @@ and re-commit when anything that changes numbers changes.
   copies the small derived artifacts, and exits non-zero on any mismatch. Supports
   `--from-local DIR` for air-gapped machines. Adapt `assets/repo/fetch_weights.py`.
 - **score_all.sh**: truth → score every `predictions_*.csv` → leaderboard → submission
-  zips. Runs unchanged on a laptop and as the last Slurm job. Adapt
+  zips. Runs unchanged on a laptop and as the last batch job. Adapt
   `assets/repo/score_all.sh`.
 
 ### <hpc>/ *(optional)*
 
-Generated from `assets/hpc/slurm/`: a machine profile per cluster, plus `stack.sh` for
+Generated from `assets/hpc/common/` plus `assets/hpc/slurm/` or `assets/hpc/pbs/`: a
+machine profile per cluster, pre-filled from the genesis site skill, plus `stack.sh` for
 the benchmark's own software-stack settings and fixes. See `references/hpc.md`.
 
 ### codabench/ *(optional)*
@@ -373,7 +374,7 @@ Ask; don't assume (SKILL.md element D). The answer shapes the repo:
 - **Includes training**:
   - generate `src/<pkg>/train.py`, with the same `--split`/directory conventions, writing
     checkpoints plus their derived artifacts to `<P>_WEIGHTS`;
-  - add training Slurm jobs, sized from this benchmark's training cost (possibly
+  - add training batch jobs, sized from this benchmark's training cost (possibly
     multi-node);
   - add a seed policy;
   - add a training validation section to docs/VALIDATION.md: does retraining reproduce

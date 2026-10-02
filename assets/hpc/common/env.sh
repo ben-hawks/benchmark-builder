@@ -1,9 +1,10 @@
 # Source before any benchmark step, on a login or compute node:
 #     BENCH_MACHINE=<machine> source <hpc>/env.sh
 #
-# Cluster-specific values come from profiles/$BENCH_MACHINE.sh and benchmark-stack hooks
-# from stack.sh; this file and jobs/*.sbatch stay generic. Override any path by exporting
-# it before sourcing.
+# Scheduler-neutral: the same file serves Slurm (assets/hpc/slurm/) and PBS (assets/hpc/pbs/)
+# job chains. Cluster-specific values come from profiles/$BENCH_MACHINE.sh and benchmark-stack
+# hooks from stack.sh; this file and the job scripts stay generic. Override any path by
+# exporting it before sourcing.
 # ADAPT: rename BENCH_ / bench_ to the benchmark's prefix, set the splits, drop the alt venv
 # if the benchmark has a single software stack.
 
@@ -35,7 +36,7 @@ export BENCH_MACHINE BENCH_ROOT BENCH_DATA BENCH_CACHE BENCH_WEIGHTS BENCH_RESUL
 export BENCH_REPO
 export PYTHONPATH="$BENCH_REPO/src${PYTHONPATH:+:$PYTHONPATH}"
 
-# Unbuffered output so Slurm .out files show progress as it happens.
+# Unbuffered output so job log files show progress as it happens.
 export PYTHONUNBUFFERED=1
 bench_stack_env
 

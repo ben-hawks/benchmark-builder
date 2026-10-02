@@ -1,0 +1,12 @@
+#!/bin/bash
+# Truth, metrics for every predictions_*.csv, leaderboard, Codabench zips (score_all.sh).
+# Resources: BENCH_QS_SCORE.
+#PBS -N bench-score
+#PBS -j oe
+set -euo pipefail
+# PBS starts the job in $HOME from a copy of this script, so locate env.sh through the
+# repo path submit.sh exports with qsub -v.
+source "${BENCH_REPO:-$PBS_O_WORKDIR}/${BENCH_HPC:-pbs}/env.sh"
+bench_activate
+
+bash "$BENCH_REPO/scripts/score_all.sh"
