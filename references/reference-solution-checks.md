@@ -17,16 +17,13 @@ auxiliary.
    - find out where the weights actually live. They may not be published at all, or be a
      loose file or a release asset.
 
-   An earlier axess pass "validated" a GNN that turned out to be rule4ml's bundled GIN
-   model, not the paper's GATv2 GNN.
+   (axess: an early pass "validated" rule4ml's bundled GIN model as the paper's GATv2 GNN.)
 2. **Training label vs scored label.** Ask: "Which field or label definition did each
    reference model train on, and is it the same one the metric scores?"
    - Check it **on data**, not from paper prose: match the training arrays' label rows
      against each candidate field.
-   - In axess, the original GNN/Transformer matched `hls_resource_report` on 100% of
-     rows and the benchmark's ground truth `resource_report` on 0%. Scored on the
-     benchmark's truth, they were worse than predicting the mean, and had to be
-     retrained.
+   - (axess: the original checkpoints matched `hls_resource_report`, not the scored
+     `resource_report`, and had to be retrained; `references/wa-hls4ml-example.md` §D.)
    - A reference solution scored against a different target than it was trained on
      isn't a valid reference (`references/ontology.md`).
 3. **The whole inference procedure.** Weights + preprocessing + statistics +

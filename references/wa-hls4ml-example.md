@@ -146,43 +146,22 @@ These fit a regression motif; they aren't a default for other motifs (see
 
 ## What this example teaches
 
-Each item became a step in SKILL.md or `references/repo-structure.md`.
+Each lesson became a rule elsewhere in the skill. The details of what happened are in the
+sections above; the rules live here:
 
-1. **Verify the reference model's identity and weights first.** Load with
-   `strict=True`, record sha256 in a manifest, and list reference vs auxiliary
-   explicitly. The wrong GNN was "validated" once.
-2. **Audit the training label against the scored label, on data.** The paper's
-   checkpoints predicted a different quantity than the benchmark scores.
-3. **The inference procedure is weights + preprocessing + statistics +
-   post-processing.** Missing stats had to be reconstructed, and the cap existed only
-   in eval code. Ship small derived artifacts in `weights/`, and verify per sample.
-4. **Reproduce a published number with the stated formula.** ε = 1 vs 1e-8, plus the
-   table's internal inconsistencies.
-5. **Ask whether the benchmark is score-only or includes training.** axess's user chose
-   score-only (2026-09-29), but that's a per-benchmark decision.
-6. **Generic Slurm, tuned per machine.**
-   - Perlmutter needed separate venvs (site PyTorch module vs TensorFlow).
-   - Downloads happen on login nodes only.
-   - `-A` goes on the command line, and the repo path through `--export`.
-   - triton segfaults on CPU nodes.
-   - Golden tests run before jobs.
-
-   See `references/hpc.md`.
-7. **Data handling defaults:** stream large JSON, featurize once into a cache that
-   tolerates older formats, keep `sample_id` unique, exclude missing truth, and keep the
-   training filter separate from the scoring filter.
-8. **Codabench:**
-   - choose results submission from scope + data visibility;
-   - make the pipeline emit submission zips;
-   - build the bundle from the same truth function;
-   - rank on a bounded primary-split metric (the exemplar R² of the training-mean
-     baseline was −2651);
-   - run the discrimination check: 0.809 vs 0.000 mean R², SMAPE 10.3% vs 114%.
-9. **Citations:** published DOI over preprint, fetched from doi.org; the software at the
-   top of `CITATION.cff`, distinct from the dataset license.
-10. **Keep the self-score current.** "HF repo pending", "not yet on Perlmutter" and
-    "Table 4 reproduced" all went stale.
-11. **Mark auxiliary models** (italic leaderboard rows, a separate column).
+| # | Lesson | Where the rule lives |
+|---|---|---|
+| 1 | Verify the reference model's identity and weights first: the wrong GNN was "validated" once | `references/reference-solution-checks.md` §1, §5 |
+| 2 | Audit the training label against the scored label, on data | `references/reference-solution-checks.md` §2 |
+| 3 | The inference procedure is weights + preprocessing + statistics + post-processing | `references/reference-solution-checks.md` §3, §4 |
+| 4 | Reproduce a published number with the stated formula (ε = 1 vs 1e-8; Table 4's inconsistencies) | `SKILL.md` element C |
+| 5 | Ask whether the benchmark is score-only or includes training | `SKILL.md` element D; `references/repo-structure.md` "Score-only vs includes training" |
+| 6 | Generic Slurm, tuned per machine (separate venvs, login-node downloads, `-A` on the command line, the triton fix, golden tests first) | `references/hpc.md` |
+| 7 | Data handling: stream large files, a cache that tolerates old formats, unique `sample_id`, missing-truth policy, separate training and scoring filters | `SKILL.md` element B; `references/repo-structure.md` `data.py`, `cache.py` |
+| 8 | Codabench: mode from scope + data visibility, pipeline-emitted zips, one truth function, a bounded ranking metric, the discrimination check | `references/codabench.md` |
+| 9 | Citations: published DOI over preprint, fetched from doi.org; software vs dataset license in `CITATION.cff` | `SKILL.md` element E; `references/repo-structure.md` "Conventions" |
+| 10 | Keep the self-score current: three pieces of evidence went stale | `SKILL.md` "Iterate" |
+| 11 | Mark auxiliary models | `references/repo-structure.md` "Conventions" |
 
 ## Rubric self-score (from the repo's `rubric.yaml`, 2026-10-02)
 
