@@ -1,10 +1,33 @@
 # Changelog
 
-## Unreleased (2026-10-02): license
+## Unreleased
+
+All changes since the first version, newest first.
+
+### Documentation cleanup (2026-10-14)
+
+Removes repeated material from the references, so each fact has one home:
+- **Codabench:** one file. `references/codabench.md` now opens with the ordered workflow,
+  followed by the format and contract sections; `references/codabench-workflow.md` is
+  gone. The Docker defaults are stated explicitly (Codabench's default `py3` when
+  `docker_image` is unset; this skill's bundles set `py312`). `SKILL.md`'s Codabench
+  section is trimmed to when to start, the mode question and the two guardrails.
+- **axess stories:** they live in `references/wa-hls4ml-example.md`, whose lessons list is
+  now a table pointing to where each rule lives. Other files keep one-clause
+  "(axess: ...)" mentions.
+- **LLM problems:** `references/genesis-skills.md` keeps the known lm-eval and
+  card-eval-updater problems; `references/llm-benchmarks.md` points there.
+- **Data card:** `references/doe-gear-cards.md` keeps the datacard-generator guidance;
+  `references/genesis-skills.md` points there.
+- **Layout rationale:** stated once, in `SKILL.md`; `references/repo-structure.md` points
+  there, and its `codabench/` entry points to `references/codabench.md`.
+- **Corpus entry:** the standalone validation section is folded into step 5.
+
+### License (2026-10-02)
 
 - Licensed under Apache-2.0 (`LICENSE`); `SKILL.md` frontmatter declares `license: Apache-2.0`.
 
-## Unreleased (2026-10-02): AmSC MLflow via the amsc-mlflow skill
+### AmSC MLflow via the amsc-mlflow skill (2026-10-02)
 
 - benchmark-builder can now use the new
   [`amsc-mlflow`](https://github.com/ben-hawks/amsc-mlflow) skill for the American
@@ -22,7 +45,7 @@
   server, experiment, run ID and registered versions.
 - `assets/repo/score_all.sh`: an optional, commented-out logging step.
 
-## Unreleased (2026-10-02): Genesis Mission skills integration
+### Genesis Mission skills integration (2026-10-02)
 
 benchmark-builder now loads skills from
 [AI-ModCon/genesis-skills](https://github.com/AI-ModCon/genesis-skills) on demand instead
@@ -32,7 +55,7 @@ machine. The skills are loaded and followed, never copied into this repo.
 `references/genesis-skills.md` maps each step to its skill and records the problems found
 by running them.
 
-### SKILL.md
+#### SKILL.md
 
 - **Shorter.** Down from 675 lines to under 430. The Codabench steps move to
   `references/codabench-workflow.md`, with a short "Package for Codabench" section kept in
@@ -47,7 +70,7 @@ by running them.
   - loading the genesis HPC skills as soon as a machine is named (element E);
   - an "Additional deliverables" section.
 
-### LLM benchmarks (new)
+#### LLM benchmarks (new)
 
 - `references/llm-benchmarks.md`:
   - the task is built with the genesis lm-eval-harness skills;
@@ -61,7 +84,7 @@ by running them.
   with lm-eval 0.4.13 and pythia-14m. The export reproduced lm-eval's `acc`/`acc_norm`
   on every sample, and `card-eval-updater` validated the resulting card.
 
-### HPC
+#### HPC
 
 - PBS support: `assets/hpc/pbs/` (a `qsub -W depend=` chain, `jobs/*.pbs`, generic
   and Aurora profiles). The scheduler-neutral `env.sh`, `stack.sh` and `setup.sh` move to
@@ -76,7 +99,7 @@ by running them.
   - notes on the genesis HPC skills (PBS array syntax, Frontier `$MEMBERWORK` path form).
 - Both submit chains were dry-run against mocked `sbatch`/`qsub`.
 
-### Dataset, metrics, cards
+#### Dataset, metrics, cards
 
 - Croissant metadata via `croissant-validator`, as an optional `data/croissant.json`.
   `datacard-generator` is now loaded from genesis-skills.
@@ -92,13 +115,13 @@ by running them.
 - `references/repo-structure.md`: `tasks/<task>/`, `data/croissant.json`, and
   `docs/VALIDATION.md` sections for the independent recomputation and the tools used.
 
-## Unreleased (2026-10-02): axess-benchmark repository structure
+### axess-benchmark repository structure (2026-10-02)
 
 This release codifies [axess-benchmark](https://github.com/ben-hawks/axess-benchmark) (the
 wa-hls4ml benchmark built with this skill) as the recommended structure for every
 benchmark, and folds in what organizing it and running it on NERSC Perlmutter taught.
 
-### Keep the generic templates free of wa-hls4ml specifics
+#### Keep the generic templates free of wa-hls4ml specifics
 
 The skill's structure, pipeline and conventions are generic. What goes inside a benchmark's
 files is decided per benchmark while the skill runs, and is implemented in that
@@ -137,7 +160,7 @@ examples.
   - `references/hpc.md` separates machine facts from the benchmark's stack, and moves
     the triton issue to "stack-specific problems: found per benchmark".
 
-### SKILL.md
+#### SKILL.md
 
 - **Repository layout.** "Build the artifacts" now proposes the axess-derived layout
   (an installable `src/<pkg>/`, `weights/MANIFEST.json`, golden tests,
@@ -166,14 +189,14 @@ examples.
   - malformed-submission checks;
   - terms placeholders allowed only for confirmed dev-instance uploads.
 
-### New references
+#### New references
 
 - `references/repo-structure.md`: the layout, piece by piece, with each file's contract,
   the optional pieces, the score-only vs training variants, and conventions.
 - `references/hpc.md`: generic Slurm, the per-machine questions, the Perlmutter worked
   profile, and gotchas.
 
-### New assets
+#### New assets
 
 - `assets/repo/`: snippets for `score_all.sh`, `submission.py`, `report.py`,
   `fetch_weights.py`, `weights/MANIFEST.json`, the golden `tests/test_pipeline.py`,
@@ -183,7 +206,7 @@ examples.
 - `assets/codabench/build_bundle.py` (template) and `assets/codabench/results_example/`
   (a runnable results-submission example using that pattern, validated through tier 4).
 
-### Scripts
+#### Scripts
 
 - `validate_codabench_bundle.py`:
   - tier 2 reads a declared `SUBMISSION_FILES` contract, parsed with `ast`, falling back
@@ -196,7 +219,7 @@ examples.
 - `score_benchmark.py`: lists evidence with provisional wording ("pending", "not yet",
   "TODO", "will be") under "Evidence to re-check".
 
-### Other
+#### Other
 
 - `references/wa-hls4ml-example.md` rewritten from axess-benchmark, now with "What this
   example teaches".
