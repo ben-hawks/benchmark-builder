@@ -7,23 +7,12 @@ benchmark built with this skill. That repo self-scores 5.00/5, is a validated Co
 bundle, and its first full NERSC Perlmutter run reproduced the committed reference results
 to ≤2.4e-4 relative. Treat it as the worked example to pattern-match against.
 
-**Generate the tree. Don't copy a skeleton.** Which optional pieces exist, which models,
-splits and targets there are, whether there's a training step, and which machines it
-runs on all vary per benchmark. Build each file from its contract below, adapted to this
-benchmark. The small reusable snippets in `assets/repo/`, `assets/hpc/` and
-`assets/codabench/` are starting points to adapt, not files to drop in unchanged.
-
-**Recommended, not required.** Propose this layout and explain what it buys:
-
-- one uniform pipeline every model runs through;
-- a participant's model plugs in by writing one CSV;
-- Codabench submissions and the competition bundle come out of the same code, so they
-  can't drift from the benchmark.
-
-If the user wants a different layout, or existing working code makes a reorganization more
-expensive than it's worth, deviate. Keep the **pipeline contract** below even then, since
-that's the part that makes results comparable. Record the deviation in the README so a
-reader isn't surprised.
+**Generate the tree, don't copy a skeleton; recommend the layout, don't require it.**
+`SKILL.md` ("Build the artifacts") says how to propose it, what it buys, and when to
+deviate. Even then, keep the **pipeline contract** below, since that's the part that makes
+results comparable, and record the deviation in the README. The snippets in
+`assets/repo/`, `assets/hpc/` and `assets/codabench/` are starting points to adapt, not
+files to drop in unchanged.
 
 **Generic structure, benchmark-specific content.** The layout, the pipeline contract and
 the conventions below apply to every benchmark. What goes *inside* the files doesn't, and
@@ -331,10 +320,9 @@ the benchmark's own software-stack settings and fixes. See `references/hpc.md`.
 
 ### codabench/ *(optional)*
 
-`bundle_src/` (hand-written, versioned) plus `build_bundle.py`, which generates the
-hidden truth, scored-ID lists, `solution/`, `sample_submission.zip`, and a weak-baseline
-zip chosen for the task, all from the **same truth function** as the benchmark. `build/` is git-ignored. See
-`references/codabench.md` § "Building the bundle from the benchmark".
+`bundle_src/` (hand-written, versioned) plus `build_bundle.py`, which generates everything
+else from the benchmark's truth function; `build/` is git-ignored. See
+`references/codabench.md`, "Building the bundle from the benchmark".
 
 ### tests/
 
