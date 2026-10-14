@@ -191,14 +191,6 @@ against `scripts/validate_corpus_entry.py` — that script checks this skill's
 own schema understanding, not the upstream repo's separate authoring/PR
 conventions, and the two can diverge.
 
-## Validate before calling it done
-
-`scripts/validate_corpus_entry.py <entry.yaml>` checks the structural rules
-above (required fields present, `>=1` list fields non-empty, `cite` entries
-look like bibtex, ratings in range) — always run it before treating the
-entry as finished, the same way `score_benchmark.py` and
-`validate_codabench_bundle.py` are never skipped for their own artifacts.
-
 ## Step by step
 
 Do this once the standalone benchmark and its rubric score both exist. The
@@ -230,13 +222,15 @@ validator against a cataloged entry; don't rediscover these by guessing.
    if actually verified**, the same bar this skill already applies everywhere
    else -- these are booleans per the documented schema (a real cataloged
    entry using strings instead is a known, documented mismatch to not repeat).
-5. **Validate before calling it done**:
+5. **Validate before calling it done**, every time:
    ```bash
    python scripts/validate_corpus_entry.py <entry.yaml>
    ```
-   Fix everything it flags as an error; warnings (e.g. the deprecated
-   `solutions` field, or `ml_motif` diverging from `task_types`) are judgment
-   calls to consider, not blockers.
+   It checks the structural rules above: required fields present, `>=1` list
+   fields non-empty, `cite` entries look like BibTeX, ratings in range. Fix
+   everything it flags as an error. Warnings (e.g. the deprecated `solutions`
+   field, or `ml_motif` diverging from `task_types`) are judgment calls, not
+   blockers.
 6. **If the entry is actually headed upstream as a PR**, fetch and follow the
    upstream repo's own `CONTRIBUTING.md` and `docs/benchmark-format.md`
    live rather than relying on any paraphrase of them — see the "If this entry is headed

@@ -102,10 +102,10 @@ Adjustments for a benchmark repo:
   pipeline then runs and scores each split separately, like any other benchmark.
 - **Pin the data.** For a Hugging Face dataset, set `dataset_kwargs: {revision: <commit>}`.
   For local files, write `data_files` relative to the repo root; `predict_lm_eval.sh`
-  always runs from there. The chain writes absolute paths, which break on any other
-  machine.
-- **Test the extraction.** `configuration-tester` runs with `--limit 5`. That validates the
-  config, not the benchmark. Reference numbers come from full runs.
+  always runs from there.
+- **Fix the chain's known problems before committing the task**: absolute data paths, the
+  tester's `--limit 5` smoke runs, custom model classes, the version triangle. They're
+  listed in `references/genesis-skills.md` ("lm-eval-harness chain").
 
 ## Pipeline mapping
 
@@ -138,10 +138,9 @@ fetch_data → predict_lm_eval.sh (per model, per split) → score_all.sh (truth
 - **Participants who don't use lm-eval** plug in by writing the same CSV (`sample_id`,
   `answer`, plus `answer_norm` if the benchmark scores it). Say this in `SUBMISSION.md`.
 
-Install lm-eval with the extras its backends need. 0.4.13's `hf` backend fails without
-`lm_eval[hf]` (`No module named 'accelerate'`). Pin the lm-eval, transformers and torch
-versions that worked in `requirements.txt` (`references/genesis-skills.md`, "Version
-triangle").
+Install lm-eval with the extras its backends need (`lm_eval[hf]`, `[vllm]`, ...), and pin
+the lm-eval, transformers and torch versions that worked in `requirements.txt`
+(`references/genesis-skills.md` lists the install problems found).
 
 **Where models run:**
 
@@ -167,9 +166,8 @@ go in `docs/VALIDATION.md`.
 
 1. **Identity and revision.** In each run's `results_*.json`, check that `config.model`,
    `config.model_args` and `model_name` all name the model you meant. A custom model class
-   with a `pretrained=` it ignores still gets that name: the genesis example recorded
-   `mistralai/Mistral-7B-Instruct-v0.3` for a model that never ran. Pin `revision=<commit
-   sha>` and record it in `reference_solution/README.md`. The export's `.meta.json` keeps
+   can be recorded under a model that never ran (`references/genesis-skills.md`). Pin
+   `revision=<commit sha>` and record it in `reference_solution/README.md`. The export's `.meta.json` keeps
    this per run.
 2. **The answer key.** Confirm on data that `doc_to_target` produces the field the benchmark
    scores (an index vs a letter vs the choice text; 0- vs 1-based). Recompute a few items
@@ -196,9 +194,8 @@ For each reference model with a Genesis/BPSW (GEAR) model card, point
 (`<results>/lm_eval/<model>/<split>/<model_name>/`) and follow its workflow: parse,
 dry-run, write, validate. Its guardrails line up with the export's: it refuses partial runs
 and unverifiable identities. Store each card next to the benchmark card
-(`references/doe-gear-cards.md`). With lm-eval 0.4.13 it also records lm-eval's
-`sample_len` field as a metric; remove that `metrics:` entry by hand
-(`references/genesis-skills.md`).
+(`references/doe-gear-cards.md`). Its known problems, including lm-eval 0.4.13's
+`sample_len` field, are in `references/genesis-skills.md`.
 
 ## Codabench
 

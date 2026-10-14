@@ -86,8 +86,7 @@ references/
   genesis-skills.md            which genesis-skills skill is used where, how to load it, known problems
   hpc.md                       generic Slurm/PBS, per-machine questions, site profiles (Perlmutter verified)
   wa-hls4ml-example.md         axess-benchmark: the worked example and the lessons it taught
-  codabench-workflow.md        Codabench: step-by-step bundle build and example-submission validation
-  codabench.md                 Codabench bundle format, build pattern, scoring contract
+  codabench.md                 Codabench: workflow, bundle format, build pattern, scoring contract, validation
   mlcommons-corpus-format.md, doe-gear-cards.md
 scripts/
   metrics.py                   regression/classification/calibration metric building blocks
