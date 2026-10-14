@@ -126,16 +126,11 @@ docs, with the source of each value written into `docs/<MACHINE>.md`.
 
 ### `datacard-generator`
 
-The DOE FAIR page links the older standalone repo `AI-ModCon/BaseData_Skills`. The same
-skill now lives in genesis-skills (the Genesis Datacard v1.2 template, vendored from
-`gitlab.osti.gov/genesis/data-cards` at `7226c2c`). Use the genesis copy. Hand it what
-element B already settled (splits, license, FAIR answers) so it confirms rather than
-asks again. Its live ORCID/ROR/DOI/OSTI checks aren't optional.
-
-`examples/wa-hls4ml/genesis_datacard_wa_hls4ml.md` was built with the same workflow
-(from `BaseData_Skills@7ef7694`).
-
-Fallback: `references/doe-gear-cards.md` ("If the workflow can't be run").
+Load it from genesis-skills (`skills/basedata-skills/datacard-generator`), not from the
+older `AI-ModCon/BaseData_Skills` repo that DOE's FAIR page links. Hand it what element B
+already settled, and don't skip its live identifier checks. Everything else (the workflow
+in outline, the worked example, and the fallback when it can't run) is in
+`references/doe-gear-cards.md`.
 
 ### `croissant-validator`
 
