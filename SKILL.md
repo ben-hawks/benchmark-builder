@@ -49,7 +49,7 @@ Later deliverables each have their own reference, read in full before starting t
 |---|---|---|
 | MLCommons corpus entry | once the benchmark and its score exist | `references/mlcommons-corpus-format.md` |
 | DOE GEAR / Genesis Model, Agent, Data cards | DOE/Genesis work, or the reference solution is a model or agent | `references/doe-gear-cards.md` |
-| Codabench competition bundle | the user wants participants to submit | `references/codabench-workflow.md`, `references/codabench.md` |
+| Codabench competition bundle | the user wants participants to submit | `references/codabench.md` |
 | Cluster runs | the benchmark runs on Slurm or PBS | `references/hpc.md` |
 | LLM benchmark | the task evaluates language models | `references/llm-benchmarks.md` |
 | AmSC MLflow tracking and model registry | the user opts in (Genesis/AmSC work, or wants experiment tracking) | the `amsc-mlflow` notes in `references/genesis-skills.md`, then that skill's `SKILL.md` |
@@ -411,27 +411,14 @@ its reference in full first; the steps are there.
 ## Package for Codabench
 
 If the user wants participants to submit against the benchmark, package it as a Codabench
-competition bundle. This is a separate, later phase. Only start once the standalone
-benchmark exists (dataset, metrics, reference solution, docs); a bundle without those
-behind it is an empty shell. Read `references/codabench-workflow.md` (the steps) and
-`references/codabench.md` (the formats) in full first. The decisions that shape it:
+competition bundle. This is a separate, later phase: start only once the standalone
+benchmark exists (dataset, metrics, reference solution, docs). A bundle without those
+behind it is an empty shell. Read `references/codabench.md` in full first; its "Workflow"
+section has the steps.
 
-1. **Code submission vs results submission.** Ask; it decides whether an
-   `ingestion_program/` exists. Score-only with public ground truth points to a results
-   submission (axess's choice). A benchmark that evaluates training or a method, or has
-   hidden data, points to a code submission. LLM benchmarks are usually results
-   submissions of per-sample answers.
-2. **Build the bundle from the benchmark, never by hand.** `codabench/build_bundle.py`
-   generates hidden truth, scored IDs, the solution and sample submissions from **the same
-   truth function the benchmark uses**. `score_all.sh` already writes an upload-ready
-   `<model>_submission.zip` for every model.
-3. **Rank on a bounded, primary-split metric** (leaderboard column 0). Never on a metric
-   unbounded below, such as R² on an out-of-distribution split.
-4. **Never author real participation terms.** Generate an obviously-marked placeholder and
-   say it must be replaced before going live.
-5. **Get explicit confirmation before any `docker push`**, every time.
-6. **Validate and report real numbers.** Run `scripts/validate_codabench_bundle.py` (tiers
-   1-3 always; tier 4 with `--docker` when Docker is available) on the sample submission,
-   every pipeline zip and deliberately malformed zips. Then report the reference vs
-   weak-baseline scores (the discrimination check) and record everything in
-   `codabench/README.md`.
+- **Ask code submission vs results submission** before generating anything. It decides
+  whether an ingestion program exists. Score-only benchmarks with public ground truth, and
+  LLM benchmarks, are usually results submissions.
+- **Never author real participation terms.** Generate an obviously-marked placeholder and
+  say it must be replaced before going live.
+- **Get explicit confirmation before every `docker push`.**
